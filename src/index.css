@@ -1,0 +1,26 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-doosii-primary: #6366f1;
+  --color-doosii-secondary: #ec4899;
+  --color-doosii-dark: #0f172a;
+  --font-sans: "Inter", sans-serif;
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-white/30 backdrop-blur-md border border-white/40 shadow-[0_4px_30px_rgba(0,0,0,0.1)];
+  }
+  .glass-dark {
+    @apply bg-black/40 backdrop-blur-xl border border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.3)];
+  }
+  .glass-card {
+    @apply bg-white/70 backdrop-blur-lg border border-white/50 shadow-sm rounded-xl;
+  }
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  @apply bg-slate-50 text-slate-800;
+}
