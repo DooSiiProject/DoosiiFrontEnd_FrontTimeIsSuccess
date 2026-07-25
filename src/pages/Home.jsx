@@ -33,10 +33,10 @@ const Home = () => {
               Săn Đồ Si, Không Lo Bị Lừa
             </h1>
             <p className="text-lg opacity-90">
-              Nền tảng thanh toán ký quỹ an toàn tuyệt đối. Mua sắm thông minh cùng cộng đồng Gen-Z.
+              Nền tảng thanh toán trung gian an toàn tuyệt đối. Mua sắm thông minh cùng cộng đồng Gen-Z.
             </p>
             <Link to="/map" className="inline-block mt-4 px-6 py-3 bg-doosii-primary hover:bg-doosii-primary/90 rounded-full font-semibold transition shadow-lg shadow-doosii-primary/30">
-              Khám Phá O2O Map
+              Khám Phá Bản đồ
             </Link>
           </div>
         </div>

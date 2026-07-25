@@ -56,7 +56,7 @@ const Checkout = () => {
 
     createOrder(orderData);
     setCheckoutProduct(null);
-    alert("Đặt hàng & Ký quỹ thành công! Hệ thống đang giữ tiền của bạn an toàn.");
+    alert("Đơn hàng đã được tạo thành công");
     navigate('/dashboard');
   };
 
@@ -105,11 +105,9 @@ const Checkout = () => {
               <div className="mt-4 p-4 bg-slate-50 border border-slate-100 rounded-xl space-y-3 animate-in slide-in-from-top-2">
                 <input required type="text" placeholder="Số thẻ" className="w-full px-4 py-2.5 rounded-lg border border-slate-200 focus:ring-2 focus:ring-doosii-primary focus:outline-none text-sm" />
                 <input required type="text" placeholder="Tên in trên thẻ (Không dấu)" className="w-full px-4 py-2.5 rounded-lg border border-slate-200 focus:ring-2 focus:ring-doosii-primary focus:outline-none text-sm uppercase" />
-                <div className={paymentType === 'visa' ? "grid grid-cols-2 gap-3" : ""}>
+                <div className="grid grid-cols-2 gap-3">
                   <input required type="text" placeholder="MM/YY" className="w-full px-4 py-2.5 rounded-lg border border-slate-200 focus:ring-2 focus:ring-doosii-primary focus:outline-none text-sm" />
-                  {paymentType === 'visa' && (
-                    <input required type="password" placeholder="CVV" maxLength="4" className="w-full px-4 py-2.5 rounded-lg border border-slate-200 focus:ring-2 focus:ring-doosii-primary focus:outline-none text-sm" />
-                  )}
+                  <input required type="password" placeholder="CVV" maxLength="4" className="w-full px-4 py-2.5 rounded-lg border border-slate-200 focus:ring-2 focus:ring-doosii-primary focus:outline-none text-sm" />
                 </div>
               </div>
             )}
@@ -117,7 +115,7 @@ const Checkout = () => {
 
           <div className="glass-card p-6 space-y-4">
             <h3 className="font-bold flex items-center gap-2 text-slate-700">
-              <CreditCard className="w-5 h-5" /> Phương thức Ký quỹ (Escrow)
+              <CreditCard className="w-5 h-5" /> Phương thức Trung gian (Escrow)
             </h3>
             <p className="text-xs text-slate-500 mb-4 bg-blue-50 p-3 rounded-lg border border-blue-100">
               <ShieldCheck className="w-4 h-4 inline mr-1 text-blue-500" />

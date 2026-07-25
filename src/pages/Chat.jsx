@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Navigate, Link, useLocation } from 'react-router-dom';
+import { Navigate, Link, useLocation, useNavigate } from 'react-router-dom';
 import useStore from '../store/useStore';
 import { productsData, shopsData } from '../data/mockData';
 import { 
@@ -8,7 +8,7 @@ import {
   Tag, X, Check, ShoppingBag, Store, User
 } from 'lucide-react';
 
-const DepositCard = ({ msg, isSeller, depositRequests, updateDepositStatus }) => {
+const DepositCard = ({ msg, currentUserId, depositRequests, updateDepositStatus, setCheckoutProduct, navigate }) => {
   let contentData = { amount: 0 };
   try { contentData = JSON.parse(msg.content); } catch (e) {}
 
@@ -18,7 +18,7 @@ const DepositCard = ({ msg, isSeller, depositRequests, updateDepositStatus }) =>
   return (
     <div className="bg-white border-2 border-indigo-500 rounded-xl p-4 w-64 md:w-72 shadow-md my-2 inline-block text-left">
       <div className="flex items-center gap-2 text-indigo-600 mb-2 font-bold border-b pb-2 border-indigo-100">
-        <CreditCard className="w-5 h-5" /> Yêu cầu Ký quỹ (Cọc)
+        <CreditCard className="w-5 h-5" /> Yêu cầu Trung gian (Cọc)
       </div>
       <div className="text-center my-3">
         <p className="text-xs text-slate-500 mb-1 uppercase font-bold tracking-wider">Số tiền cọc</p>
@@ -27,20 +27,34 @@ const DepositCard = ({ msg, isSeller, depositRequests, updateDepositStatus }) =>
         </p>
       </div>
       
-      {status === 'Pending' && !isSeller && (
+      {status === 'Pending' && msg.senderId !== currentUserId && (
         <div className="flex gap-2 mt-4">
           <button onClick={() => updateDepositStatus(deposit.id, 'Rejected')} className="flex-1 py-2 bg-slate-100 text-slate-600 font-bold rounded-lg hover:bg-slate-200 transition text-sm">Từ chối</button>
           <button onClick={() => updateDepositStatus(deposit.id, 'Accepted')} className="flex-1 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition text-sm">Đồng ý</button>
         </div>
       )}
       
-      {status === 'Pending' && isSeller && (
-        <div className="text-center text-sm font-medium text-orange-500 bg-orange-50 py-2 rounded-lg mt-3">Đang chờ khách xác nhận...</div>
+      {status === 'Pending' && msg.senderId === currentUserId && (
+        <div className="text-center text-sm font-medium text-orange-500 bg-orange-50 py-2 rounded-lg mt-3">Đang chờ đối phương xác nhận...</div>
       )}
 
       {status === 'Accepted' && (
-        <div className="text-center text-sm font-medium text-emerald-600 bg-emerald-50 py-2 rounded-lg mt-3 flex items-center justify-center gap-1">
-          <Check className="w-4 h-4" /> Đã xác nhận (Có thể thanh toán)
+        <div className="mt-3">
+          <div className="text-center text-sm font-medium text-emerald-600 bg-emerald-50 py-2 rounded-lg flex items-center justify-center gap-1">
+            <Check className="w-4 h-4" /> Đã xác nhận
+          </div>
+          <button 
+            onClick={() => {
+              const p = productsData.find(prod => prod.id === deposit.productId);
+              if (p) {
+                setCheckoutProduct(p);
+                navigate('/checkout');
+              }
+            }} 
+            className="w-full mt-2 py-2 bg-emerald-500 text-white font-bold rounded-lg hover:bg-emerald-600 transition text-sm flex items-center justify-center gap-1"
+          >
+            <ShoppingBag className="w-4 h-4" /> Thanh toán cọc ngay
+          </button>
         </div>
       )}
 
@@ -53,15 +67,32 @@ const DepositCard = ({ msg, isSeller, depositRequests, updateDepositStatus }) =>
   );
 };
 
+const ProductMessageCard = ({ productId }) => {
+  const product = productsData.find(p => p.id === parseInt(productId));
+  if (!product) return null;
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-3 w-64 shadow-sm my-2 text-left">
+      <img src={product.image} className="w-full h-32 object-cover rounded-lg mb-3" />
+      <h4 className="font-bold text-slate-800 text-sm line-clamp-2">{product.name}</h4>
+      <p className="font-black text-indigo-600 mt-1">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(product.price)}</p>
+      <Link to={`/product/${product.id}`} className="block text-center mt-3 py-2 bg-indigo-50 text-indigo-600 font-bold rounded-lg text-xs hover:bg-indigo-100 transition">Xem chi tiết</Link>
+    </div>
+  );
+};
+
 const ChatArea = ({ activeConv }) => {
-  const { currentUser, messages, users, sendMessage, depositRequests, updateDepositStatus, createDepositRequest, quickReplies } = useStore();
+  const { currentUser, messages, users, sendMessage, depositRequests, updateDepositStatus, createDepositRequest, quickReplies, setCheckoutProduct } = useStore();
+  const navigate = useNavigate();
   const [inputText, setInputText] = useState('');
   const [showQR, setShowQR] = useState(false);
   const [showDepositModal, setShowDepositModal] = useState(false);
+  const [showSendProductModal, setShowSendProductModal] = useState(false);
+  const [selectedSendProductId, setSelectedSendProductId] = useState('');
   const [depositType, setDepositType] = useState('amount'); // 'amount' | 'percent'
   const [depositAmount, setDepositAmount] = useState('');
   const [depositPercent, setDepositPercent] = useState(50);
   const [selectedProductId, setSelectedProductId] = useState(activeConv?.relatedProductId || '');
+  const [depositRole, setDepositRole] = useState('seller');
   
   const endOfMessagesRef = useRef(null);
   
@@ -80,7 +111,15 @@ const ChatArea = ({ activeConv }) => {
     }
   }
 
-  const canCreateDeposit = isSeller && currentUser.isAbleToSell;
+  const otherUserProducts = productsData.filter(p => {
+    if (p.sellType === 'shop') {
+      const shop = shopsData.find(s => s.id === p.shopId);
+      return shop && shop.ownerId === otherUser?.id;
+    }
+    return false;
+  });
+
+  const canCreateDeposit = (isSeller && currentUser.isAbleToSell) || (product && product.sellType === 'pass') || (!product && (currentUser.isAbleToSell || otherUser?.isAbleToSell));
 
   useEffect(() => {
     endOfMessagesRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -116,6 +155,12 @@ const ChatArea = ({ activeConv }) => {
     sendMessage(activeConv.id, currentUser.id, 'DepositRequest', JSON.stringify({ amount: finalAmount, percentage: finalPercent, depositId: dep.id, productId: pId }));
     setShowDepositModal(false);
     setDepositAmount('');
+  };
+
+  const handleSendProduct = () => {
+    if (!selectedSendProductId) return alert("Vui lòng chọn sản phẩm");
+    sendMessage(activeConv.id, currentUser.id, 'ProductCard', selectedSendProductId);
+    setShowSendProductModal(false);
   };
 
   return (
@@ -155,7 +200,9 @@ const ChatArea = ({ activeConv }) => {
             <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[80%] ${isMe ? 'text-right' : 'text-left'}`}>
                 {msg.messageType === 'DepositRequest' ? (
-                  <DepositCard msg={msg} isSeller={isSeller} depositRequests={depositRequests} updateDepositStatus={updateDepositStatus} />
+                  <DepositCard msg={msg} currentUserId={currentUser.id} depositRequests={depositRequests} updateDepositStatus={updateDepositStatus} setCheckoutProduct={setCheckoutProduct} navigate={navigate} />
+                ) : msg.messageType === 'ProductCard' ? (
+                  <ProductMessageCard productId={msg.content} />
                 ) : (
                   <div className={`inline-block px-4 py-2.5 rounded-2xl ${isMe ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-white border border-slate-200 text-slate-700 rounded-tl-sm shadow-sm'}`}>
                     <p className="text-[15px] leading-relaxed text-left">{msg.content}</p>
@@ -174,6 +221,10 @@ const ChatArea = ({ activeConv }) => {
         <form onSubmit={handleSend} className="flex items-end gap-2 relative">
           
           <button type="button" className="p-3 text-slate-400 hover:text-indigo-600 transition rounded-xl hover:bg-indigo-50"><ImageIcon className="w-5 h-5" /></button>
+          
+          {otherUserProducts.length > 0 && (
+             <button type="button" onClick={() => setShowSendProductModal(true)} className="p-3 text-emerald-500 hover:text-emerald-600 transition rounded-xl hover:bg-emerald-50" title="Gửi sản phẩm"><ShoppingBag className="w-5 h-5" /></button>
+          )}
           
           {isSeller && (
             <div className="relative">
@@ -225,6 +276,23 @@ const ChatArea = ({ activeConv }) => {
             </div>
             <div className="p-6 space-y-5">
               
+              {/* Chọn vai trò (Chỉ hiển thị khi giao dịch cá nhân hoặc không ghim sản phẩm) */}
+              {(!product || product.sellType === 'pass') && (
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Vai trò của bạn</label>
+                  <div className="flex gap-2">
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input type="radio" name="depositRole" value="buyer" checked={depositRole === 'buyer'} onChange={() => setDepositRole('buyer')} className="text-amber-500 focus:ring-amber-500" />
+                      Người mua (Chủ động gửi cọc)
+                    </label>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer ml-4">
+                      <input type="radio" name="depositRole" value="seller" checked={depositRole === 'seller'} onChange={() => setDepositRole('seller')} className="text-amber-500 focus:ring-amber-500" />
+                      Người bán (Yêu cầu khách cọc)
+                    </label>
+                  </div>
+                </div>
+              )}
+
               {/* Chọn sản phẩm */}
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">Chọn sản phẩm</label>
@@ -235,11 +303,12 @@ const ChatArea = ({ activeConv }) => {
                 >
                   <option value="">-- Chọn sản phẩm --</option>
                   {productsData.filter(p => {
+                    const targetOwnerId = (!product || product.sellType === 'pass') ? (depositRole === 'buyer' ? otherUserId : currentUser.id) : currentUser.id;
                     if (p.sellType === 'shop') {
                       const shop = shopsData.find(s => s.id === p.shopId);
-                      return shop && shop.ownerId === currentUser.id;
+                      return shop && shop.ownerId === targetOwnerId;
                     }
-                    return p.sellerId === currentUser.id;
+                    return p.sellerId === targetOwnerId;
                   }).map(p => (
                     <option key={p.id} value={p.id}>{p.name} - {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(p.price)}</option>
                   ))}
@@ -300,6 +369,34 @@ const ChatArea = ({ activeConv }) => {
           </div>
         </div>
       )}
+
+      {/* Send Product Modal */}
+      {showSendProductModal && (
+        <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-in zoom-in-95">
+            <div className="p-4 bg-emerald-500 text-white font-bold flex justify-between items-center">
+              Gửi sản phẩm đang quan tâm
+              <button onClick={() => setShowSendProductModal(false)}><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-6 space-y-5">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">Chọn sản phẩm của người này</label>
+                <select 
+                  value={selectedSendProductId}
+                  onChange={(e) => setSelectedSendProductId(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 focus:ring-emerald-500 outline-none font-medium text-sm"
+                >
+                  <option value="">-- Chọn sản phẩm --</option>
+                  {otherUserProducts.map(p => (
+                    <option key={p.id} value={p.id}>{p.name} - {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(p.price)}</option>
+                  ))}
+                </select>
+              </div>
+              <button onClick={handleSendProduct} className="w-full py-3 bg-emerald-500 text-white font-bold rounded-xl hover:bg-emerald-600 shadow-md">Gửi vào chat</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -312,6 +409,7 @@ const CasualChat = () => {
   // Lọc các conversation mà user này tham gia
   const myConvs = conversations.filter(c => c.participant1_Id === currentUser.id || c.participant2_Id === currentUser.id);
   const [activeConvId, setActiveConvId] = useState(stateConvId || (myConvs.length > 0 ? myConvs[0].id : null));
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     if (stateConvId) setActiveConvId(stateConvId);
@@ -323,11 +421,46 @@ const CasualChat = () => {
     <div className="flex w-full h-full">
       {/* Sidebar */}
       <div className="w-80 bg-white border-r border-slate-200 flex flex-col shrink-0">
-        <div className="p-4 border-b border-slate-100">
+        <div className="p-4 border-b border-slate-100 space-y-4">
           <h2 className="text-xl font-bold text-slate-800">Tin nhắn</h2>
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder="Tìm tên, email..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-slate-100 pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-100 border border-transparent focus:border-indigo-300" 
+            />
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto p-2">
-          {myConvs.map(conv => {
+          {searchQuery ? (
+            users.filter(u => 
+              u.id !== currentUser.id && 
+              (u.fullname?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+               u.email?.toLowerCase().includes(searchQuery.toLowerCase()))
+            ).map(user => (
+              <div key={user.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition">
+                <img src={user.avatar} className="w-12 h-12 rounded-full object-cover" />
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-bold text-slate-800 truncate">{user.fullname}</h4>
+                  <p className="text-xs text-slate-500 truncate mt-0.5">{user.email}</p>
+                </div>
+                <button 
+                  onClick={() => {
+                    const convId = useStore.getState().createConversation(currentUser.id, user.id, null);
+                    setActiveConvId(convId);
+                    setSearchQuery('');
+                  }}
+                  className="px-3 py-1.5 bg-indigo-100 text-indigo-600 font-bold text-xs rounded-lg hover:bg-indigo-200 transition shrink-0"
+                >
+                  Nhắn tin
+                </button>
+              </div>
+            ))
+          ) : (
+            myConvs.map(conv => {
             const otherUser = users.find(u => u.id === (conv.participant1_Id === currentUser.id ? conv.participant2_Id : conv.participant1_Id));
             return (
               <div key={conv.id} onClick={() => setActiveConvId(conv.id)} className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition ${activeConvId === conv.id ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}>
@@ -338,7 +471,7 @@ const CasualChat = () => {
                 </div>
               </div>
             )
-          })}
+          }))}
         </div>
       </div>
       
@@ -354,6 +487,7 @@ const ShopperChat = () => {
   
   const myConvs = conversations.filter(c => c.participant1_Id === currentUser.id || c.participant2_Id === currentUser.id);
   const [activeConvId, setActiveConvId] = useState(stateConvId || (myConvs.length > 0 ? myConvs[0].id : null));
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     if (stateConvId) setActiveConvId(stateConvId);
@@ -376,7 +510,13 @@ const ShopperChat = () => {
           </div>
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input type="text" placeholder="Tìm tên khách, mã SP..." className="w-full bg-slate-100 pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-100 border border-transparent focus:border-indigo-300" />
+            <input 
+              type="text" 
+              placeholder="Tìm user bằng tên, email..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-slate-100 pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-100 border border-transparent focus:border-indigo-300" 
+            />
           </div>
           <div className="flex gap-2 mt-3 overflow-x-auto pb-1 no-scrollbar">
             <span className="text-[10px] font-bold uppercase tracking-wider px-3 py-1 bg-white border border-slate-200 rounded-full text-slate-600 whitespace-nowrap shadow-sm">Tất cả</span>
@@ -386,9 +526,34 @@ const ShopperChat = () => {
         </div>
         
         <div className="flex-1 overflow-y-auto p-2 bg-white">
-          {myConvs.map(conv => {
-            const user = users.find(u => u.id === (conv.participant1_Id === currentUser.id ? conv.participant2_Id : conv.participant1_Id));
-            const tags = conversationTags.filter(ct => ct.conversationId === conv.id).map(ct => shopTags.find(t => t.id === ct.tagId));
+          {searchQuery ? (
+            users.filter(u => 
+              u.id !== currentUser.id && 
+              (u.fullname?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+               u.email?.toLowerCase().includes(searchQuery.toLowerCase()))
+            ).map(user => (
+              <div key={user.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition border-b border-slate-100">
+                <img src={user.avatar} className="w-12 h-12 rounded-full object-cover" />
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-bold text-slate-800 truncate">{user.fullname}</h4>
+                  <p className="text-xs text-slate-500 truncate mt-0.5">{user.email}</p>
+                </div>
+                <button 
+                  onClick={() => {
+                    const convId = useStore.getState().createConversation(currentUser.id, user.id, null);
+                    setActiveConvId(convId);
+                    setSearchQuery('');
+                  }}
+                  className="px-3 py-1.5 bg-indigo-100 text-indigo-600 font-bold text-xs rounded-lg hover:bg-indigo-200 transition shrink-0"
+                >
+                  Nhắn tin
+                </button>
+              </div>
+            ))
+          ) : (
+            myConvs.map(conv => {
+              const user = users.find(u => u.id === (conv.participant1_Id === currentUser.id ? conv.participant2_Id : conv.participant1_Id));
+              const tags = conversationTags.filter(ct => ct.conversationId === conv.id).map(ct => shopTags.find(t => t.id === ct.tagId));
             
             return (
               <div key={conv.id} onClick={() => setActiveConvId(conv.id)} className={`p-3 rounded-xl cursor-pointer border-l-4 transition mb-2 ${activeConvId === conv.id ? 'border-indigo-600 bg-indigo-50/50 shadow-sm' : 'border-transparent hover:bg-slate-50'}`}>
@@ -408,7 +573,7 @@ const ShopperChat = () => {
                 </div>
               </div>
             )
-          })}
+          }))}
         </div>
       </div>
       

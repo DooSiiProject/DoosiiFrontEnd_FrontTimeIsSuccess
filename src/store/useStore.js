@@ -65,6 +65,7 @@ const useStore = create(
       conversationTags: conversationTagsData,
       quickReplies: quickRepliesData,
       depositRequests: depositRequestsData,
+  holdRequests: [],
 
       // --- CHAT ACTIONS ---
       sendMessage: (conversationId, senderId, messageType, content) => set((state) => {
@@ -108,14 +109,42 @@ const useStore = create(
         )
       })),
 
+      // Hold Requests
+      createHoldRequest: (buyerId, productId, holdDuration, depositAmount, commissionAmount, paymentMethod) => {
+        const newHold = {
+          id: 'HOLD_' + Date.now(),
+          buyerId,
+          productId,
+          holdDuration,
+          depositAmount,
+          commissionAmount,
+          paymentMethod,
+          status: 'Đang giữ',
+          createdAt: new Date().toISOString()
+        };
+        set((state) => ({ holdRequests: [...state.holdRequests, newHold] }));
+        return newHold;
+      },
+      updateHoldRequestStatus: (holdId, newStatus) => set((state) => ({
+        holdRequests: state.holdRequests.map(h =>
+          h.id === holdId ? { ...h, status: newStatus } : h
+        )
+      })),
+
       createConversation: (participant1_Id, participant2_Id, relatedProductId) => {
         const state = get();
         let existing = state.conversations.find(c => 
           ((c.participant1_Id === participant1_Id && c.participant2_Id === participant2_Id) || 
-           (c.participant1_Id === participant2_Id && c.participant2_Id === participant1_Id)) &&
-          c.relatedProductId === relatedProductId
+           (c.participant1_Id === participant2_Id && c.participant2_Id === participant1_Id))
         );
-        if (existing) return existing.id;
+        if (existing) {
+          if (relatedProductId && existing.relatedProductId !== relatedProductId) {
+             set((s) => ({
+               conversations: s.conversations.map(c => c.id === existing.id ? { ...c, relatedProductId } : c)
+             }));
+          }
+          return existing.id;
+        }
 
         const newId = 'CONV_' + Date.now();
         set((s) => ({

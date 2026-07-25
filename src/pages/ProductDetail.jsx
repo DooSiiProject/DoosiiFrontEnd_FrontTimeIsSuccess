@@ -81,7 +81,10 @@ const ProductDetail = () => {
               </button>
               {product.sellType === 'shop' && (
                 <button 
-                  onClick={() => navigate('/map', { state: { shopId: product.shopId } })}
+                  onClick={() => {
+                    localStorage.setItem('targetProductId', product.id);
+                    navigate('/map', { state: { shopId: product.shopId, productId: product.id } });
+                  }}
                   className="flex-1 flex items-center justify-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 py-2 rounded-xl font-medium transition border border-indigo-100"
                 >
                   <MapPin className="w-4 h-4" /> Xem vị trí shop

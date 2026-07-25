@@ -4,9 +4,9 @@ import useStore from '../store/useStore';
 import { 
   Package, Truck, CheckCircle, AlertTriangle, Clock, 
   ChevronRight, Lock, MapPin, Copy, Video, ShieldCheck,
-  Search, Filter, CreditCard, Store
+  Search, Filter, CreditCard, Store, X
 } from 'lucide-react';
-import { productsData } from '../data/mockData';
+import { productsData, shopsData } from '../data/mockData';
 
 // --- BẢNG ÁNH XẠ TRẠNG THÁI ---
 // 1. Chờ xác nhận / Đã đặt
@@ -22,7 +22,22 @@ import { productsData } from '../data/mockData';
 
 const CasualOrders = ({ orders }) => {
   const [activeTab, setActiveTab] = useState('cho_lay_hang');
+  const [showPassModal, setShowPassModal] = useState(false);
+  const [passProduct, setPassProduct] = useState(null);
+  const [passOrder, setPassOrder] = useState(null);
+  
   const { currentUser, updateOrderStatus } = useStore();
+
+  const handlePassClick = (order, product) => {
+    setPassProduct(product);
+    setPassOrder(order);
+    setShowPassModal(true);
+  };
+
+  const handleConfirmPass = () => {
+    alert("Đã đăng bán lại thành công! Sản phẩm của bạn đã xuất hiện trên trang chủ.");
+    setShowPassModal(false);
+  };
 
   const myOrders = orders.filter(o => o.buyerId === currentUser.id).sort((a,b) => new Date(b.date) - new Date(a.date));
 
@@ -212,7 +227,15 @@ const CasualOrders = ({ orders }) => {
                     <button onClick={() => updateOrderStatus(order.id, 'Đã giao - Cần khui hàng')} className="px-3 py-2 bg-slate-100 text-slate-600 font-bold rounded-lg hover:bg-slate-200 text-xs">MOCK: Đã giao</button>
                   )}
                   {order.status === 'Hoàn tất' && (
-                    <button onClick={() => updateOrderStatus(order.id, 'Yêu cầu trả hàng')} className="px-3 py-2 bg-slate-100 text-red-600 font-bold rounded-lg hover:bg-slate-200 text-xs">MOCK: Trả hàng</button>
+                    <div className="flex gap-2">
+                      <button onClick={() => updateOrderStatus(order.id, 'Yêu cầu trả hàng')} className="px-3 py-2 bg-slate-100 text-red-600 font-bold rounded-lg hover:bg-slate-200 text-xs">MOCK: Trả hàng</button>
+                      <button 
+                        onClick={() => handlePassClick(order, product)}
+                        className="px-6 py-2.5 bg-doosii-primary text-white font-bold rounded-xl hover:bg-indigo-700 transition shadow-sm whitespace-nowrap"
+                      >
+                        Pass lại luôn
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -220,6 +243,49 @@ const CasualOrders = ({ orders }) => {
           );
         })}
       </div>
+
+      {/* Modal Pass Lại Luôn */}
+      {showPassModal && passProduct && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95">
+            <div className="p-4 bg-doosii-primary text-white font-bold flex justify-between items-center">
+              Treo bán lại (Pass The Defect)
+              <button onClick={() => setShowPassModal(false)}><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-slate-600">Hệ thống đã tự động sao chép thông tin sản phẩm. Bạn có thể điều chỉnh lại giá trước khi đăng.</p>
+              
+              <div className="flex gap-4 p-4 border border-slate-200 rounded-xl bg-slate-50">
+                <img src={passProduct.image} className="w-20 h-20 object-cover rounded-lg" />
+                <div className="flex-1">
+                  <h4 className="font-bold text-slate-800 text-sm line-clamp-2">{passProduct.name}</h4>
+                  <textarea 
+                    className="w-full mt-2 p-2 text-xs border border-slate-200 rounded bg-white outline-none focus:border-doosii-primary"
+                    rows="3"
+                    defaultValue={`Mình vừa mua nhưng mặc không vừa, pass lại rẻ hơn 30k. \n\n${passProduct.description || ''}`}
+                  ></textarea>
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Giá pass lại (VNĐ)</label>
+                <input 
+                  type="number" 
+                  defaultValue={passProduct.price > 30000 ? passProduct.price - 30000 : passProduct.price}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl font-bold text-doosii-primary text-lg outline-none focus:border-doosii-primary focus:ring-2 focus:ring-indigo-100" 
+                />
+              </div>
+
+              <button 
+                onClick={handleConfirmPass}
+                className="w-full py-3 bg-doosii-primary text-white font-bold rounded-xl hover:bg-indigo-700 shadow-md transition mt-4"
+              >
+                Đăng bán ngay
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -228,7 +294,13 @@ const ShopperOrders = ({ orders, isCasual }) => {
   const [activeTab, setActiveTab] = useState('cho_xu_ly');
   const { currentUser, updateOrderStatus } = useStore();
 
-  const myOrders = orders.filter(o => o.items.some(p => p.shopId === currentUser.shopId || p.sellerId === currentUser.id)).sort((a,b) => new Date(b.date) - new Date(a.date));
+  const myOrders = orders.filter(o => o.items.some(p => {
+    if (p.sellType === 'shop') {
+      const shop = shopsData.find(s => s.id === p.shopId);
+      return shop && shop.ownerId === currentUser.id;
+    }
+    return p.sellerId === currentUser.id;
+  })).sort((a,b) => new Date(b.date) - new Date(a.date));
 
   const filteredOrders = myOrders.filter(o => {
     const s = o.status;

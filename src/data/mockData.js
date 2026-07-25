@@ -139,66 +139,12 @@ const baseProducts = [
     tags: ["Y2K"],
     image: "https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?w=500&auto=format&fit=crop&q=60"
   },
-  {
-    id: 5,
-    name: "Chân váy mini xếp ly",
-    sellType: "shop",
-    sellerId: null,
-    shopId: "SHOP_01",
-    price: 180000,
-    category: "Chân váy",
-    specs: { vongEo: 64, daiVay: 38 },
-    description: "Chân váy nữ sinh họa tiết kẻ caro đỏ.",
-    recommend: { height: "150-160 cm", weight: "40-50 kg" },
-    brand: "WEGO",
-    origin: "Nhật Bản",
-    colors: ["Đỏ", "Đen"],
-    material: "Polyester",
-    tags: ["Y2K"],
-    image: "https://images.unsplash.com/photo-1574341902409-cf56487e35b7?w=500&auto=format&fit=crop&q=60"
-  },
-  {
-    id: 6,
-    name: "Áo sơ mi Flannel caro",
-    sellType: "shop",
-    sellerId: null,
-    shopId: "SHOP_01",
-    price: 250000,
-    category: "Áo sơ mi",
-    specs: { daiAo: 74, ngangVai: 48, ngangThan: 55, daiTay: 64 },
-    description: "Sơ mi dạ nỉ dày dặn, không xù lông.",
-    recommend: { height: "170-178 cm", weight: "65-75 kg" },
-    brand: "Uniqlo",
-    origin: "Việt Nam",
-    colors: ["Đỏ", "Navy"],
-    material: "Dạ nỉ",
-    tags: ["90s Vintage"],
-    image: "https://images.unsplash.com/photo-1596755094514-f87e32f85e2c?w=500&auto=format&fit=crop&q=60"
-  },
-  {
-    id: 7,
-    name: "Áo len vặn thừng Oversize",
-    sellType: "shop",
-    sellerId: null,
-    shopId: "SHOP_01",
-    price: 220000,
-    category: "Áo len",
-    specs: { daiAo: 70, ngangVai: 58, ngangThan: 62, daiTay: 55 },
-    description: "Len dày cực ấm, phù hợp mùa đông.",
-    recommend: { height: "155-165 cm", weight: "45-55 kg" },
-    brand: "No Brand",
-    origin: "Hàn Quốc",
-    colors: ["Trắng kem"],
-    material: "Len",
-    tags: ["80s Retro"],
-    image: "https://images.unsplash.com/photo-1620799140188-3b2a02fd9a77?w=500&auto=format&fit=crop&q=60"
-  }
+  
 ];
 
 export const productsData = [
   ...baseProducts,
-  ...baseProducts.map(p => ({ ...p, id: p.id + 10, name: p.name + " (Khác)", image: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=500&auto=format&fit=crop&q=60" })),
-  ...baseProducts.map(p => ({ ...p, id: p.id + 20, name: p.name + " (Mới)", image: "https://images.unsplash.com/photo-1434389678369-182cb14b0162?w=500&auto=format&fit=crop&q=60" }))
+  
 ];
 
 export const conversationsData = [

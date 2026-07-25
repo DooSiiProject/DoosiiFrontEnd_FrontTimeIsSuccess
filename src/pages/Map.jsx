@@ -4,6 +4,9 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { shopsData } from '../data/mockData';
 import { Link, useLocation } from 'react-router-dom';
+import { ShoppingBag } from 'lucide-react';
+import HoldItemModal from '../components/HoldItemModal';
+import { productsData } from '../data/mockData';
 
 // Fix for default Leaflet icon in React
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -27,6 +30,9 @@ const userIcon = L.divIcon({
 const MapPage = () => {
   const location = useLocation();
   const targetShopId = location.state?.shopId;
+  const targetProductId = location.state?.productId 
+    ? Number(location.state.productId) 
+    : (localStorage.getItem('targetProductId') ? Number(localStorage.getItem('targetProductId')) : null);
   const markerRefs = useRef({});
 
   // Tọa độ trung tâm (Thủ Đức - Dĩ An)
@@ -35,6 +41,10 @@ const MapPage = () => {
   const [activeShop, setActiveShop] = useState(null);
   const [selectedRoute, setSelectedRoute] = useState(null);
   const [routeInfo, setRouteInfo] = useState(null);
+  const [showHoldModal, setShowHoldModal] = useState(false);
+
+  const holdProduct = targetProductId ? productsData.find(p => Number(p.id) === targetProductId) : null;
+  const holdShop = holdProduct ? shopsData.find(s => String(s.id) === String(holdProduct.shopId)) : null;
 
   useEffect(() => {
     if (targetShopId && markerRefs.current[targetShopId]) {
@@ -60,7 +70,7 @@ const MapPage = () => {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div>
-        <h1 className="text-3xl font-bold text-slate-800">O2O Hidden Gem Map</h1>
+        <h1 className="text-3xl font-bold text-slate-800">Bản đồ</h1>
         <p className="text-slate-500 mt-2">Khám phá các cửa hàng đồ si chất lượng xung quanh khu vực Thủ Đức.</p>
       </div>
 
@@ -142,6 +152,27 @@ const MapPage = () => {
         </MapContainer>
       </div>
 
+      {/* Hold Product Container (Below Map) */}
+      {holdProduct && (
+        <div className="glass-card p-6 border-l-4 border-doosii-primary flex flex-col md:flex-row items-center justify-between shadow-lg gap-4 animate-in fade-in slide-in-from-bottom-4 mt-8">
+          <div className="flex gap-4 items-center">
+            <img src={holdProduct.image} className="w-24 h-24 object-cover rounded-xl shadow-md border border-slate-100" alt={holdProduct.name} />
+            <div>
+              <p className="bg-doosii-primary text-white text-[10px] font-black tracking-wider px-2 py-0.5 rounded-full inline-block mb-2 uppercase">Sản phẩm đang xem</p>
+              <h4 className="font-bold text-slate-800 text-lg line-clamp-1">{holdProduct.name}</h4>
+              <p className="text-doosii-primary font-black text-xl">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(holdProduct.price)}</p>
+              <p className="text-sm text-slate-500 mt-1">Được bán bởi: <span className="font-bold">{holdShop ? holdShop.name : 'Chủ shop'}</span></p>
+            </div>
+          </div>
+          <button 
+            onClick={() => setShowHoldModal(true)}
+            className="w-full md:w-auto px-8 py-4 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition flex justify-center items-center gap-2 shadow-lg hover:shadow-xl hover:-translate-y-1"
+          >
+            <ShoppingBag className="w-5 h-5" /> Đăng ký Giữ Đồ Tại Shop
+          </button>
+        </div>
+      )}
+
       {routeInfo && (
         <div className="glass-card p-6 border-l-4 border-indigo-500 flex flex-col md:flex-row items-start md:items-center justify-between shadow-lg gap-4">
           <div>
@@ -165,6 +196,13 @@ const MapPage = () => {
         </div>
       )}
 
+      {showHoldModal && holdProduct && holdShop && (
+        <HoldItemModal 
+          product={holdProduct} 
+          shop={holdShop} 
+          onClose={() => setShowHoldModal(false)} 
+        />
+      )}
     </div>
   );
 };

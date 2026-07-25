@@ -10,6 +10,7 @@ import Orders from './pages/Orders';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Chat from './pages/Chat';
+import HoldManagement from './pages/HoldManagement';
 
 function App() {
   return (
@@ -26,6 +27,7 @@ function App() {
           <Route path="checkout" element={<Checkout />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="orders" element={<Orders />} />
+          <Route path="holds" element={<HoldManagement />} />
           <Route path="chat" element={<Chat />} />
         </Route>
       </Routes>

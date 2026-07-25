@@ -56,9 +56,13 @@ const Dashboard = () => {
       <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x">
         <Link to="/map" className="snap-start shrink-0 bg-white border p-4 rounded-2xl min-w-[140px] text-center hover:bg-blue-50 hover:border-blue-200 transition group">
           <Map className="w-8 h-8 mx-auto mb-2 text-blue-500 group-hover:scale-110 transition" />
-          <span className="font-bold text-sm text-slate-700">Bản đồ (O2O)</span>
+          <span className="font-bold text-sm text-slate-700">Bản đồ</span>
         </Link>
-        <Link to="/orders" className="snap-start shrink-0 bg-white border p-4 rounded-2xl min-w-[140px] text-center hover:bg-orange-50 hover:border-orange-200 transition group">
+        <Link to="/holds" className="snap-start shrink-0 bg-white border p-4 rounded-2xl min-w-[140px] text-center hover:bg-amber-50 hover:border-amber-200 transition group">
+          <ShieldCheck className="w-8 h-8 mx-auto mb-2 text-amber-500 group-hover:scale-110 transition" />
+          <span className="font-bold text-sm text-slate-700">Quản lý giữ đồ</span>
+        </Link>
+        <Link to="/orders" className="snap-start shrink-0 bg-white border p-4 rounded-2xl min-w-[140px] text-center hover:bg-indigo-50 hover:border-indigo-200 transition group">
           <ShoppingBag className="w-8 h-8 mx-auto mb-2 text-orange-500 group-hover:scale-110 transition" />
           <span className="font-bold text-sm text-slate-700">Quản lý đơn hàng</span>
         </Link>
@@ -158,11 +162,15 @@ const Dashboard = () => {
         </button>
         <Link to="/orders" className="bg-white border-2 border-slate-100 rounded-2xl p-6 flex flex-col items-center justify-center hover:border-doosii-secondary transition group text-slate-700">
           <Package className="w-10 h-10 mb-3 text-doosii-secondary group-hover:scale-110 transition" />
-          <span className="font-bold text-center">Quản lý Đơn hàng</span>
+          <span className="font-bold text-center">Quản lý Đơn Hàng</span>
         </Link>
-        <Link to="/chat" className="bg-white border-2 border-slate-100 rounded-2xl p-6 flex flex-col items-center justify-center hover:border-blue-500 transition group text-slate-700">
-          <MessageSquare className="w-10 h-10 mb-3 text-blue-500 group-hover:scale-110 transition" />
-          <span className="font-bold text-center">Chat Khách hàng</span>
+        <Link to="/holds" className="bg-white border-2 border-slate-100 rounded-2xl p-6 flex flex-col items-center justify-center hover:border-amber-500 transition group text-slate-700">
+          <ShieldCheck className="w-10 h-10 mb-3 text-amber-500 group-hover:scale-110 transition" />
+          <span className="font-bold text-center">Quản lý Giữ Đồ</span>
+        </Link>
+        <Link to="/wallet" className="bg-white border-2 border-slate-100 rounded-2xl p-6 flex flex-col items-center justify-center hover:border-emerald-500 transition group text-slate-700">
+          <Wallet className="w-10 h-10 mb-3 text-emerald-500 group-hover:scale-110 transition" />
+          <span className="font-bold text-center">Ví DooSii</span>
         </Link>
         <button className="bg-white border-2 border-slate-100 rounded-2xl p-6 flex flex-col items-center justify-center hover:border-orange-500 transition group text-slate-700">
           <Map className="w-10 h-10 mb-3 text-orange-500 group-hover:scale-110 transition" />
