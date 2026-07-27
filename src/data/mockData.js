@@ -1,7 +1,7 @@
 export const usersData = [
   {
     id: 1,
-    fullname: "Anya Forger",
+    fullname: "Buyer A",
     email: "AnyaWithThinkingSenne@gmail.com",
     password: "Chunnimommy",
     cccd: null,
@@ -9,12 +9,12 @@ export const usersData = [
     matsauCCCD: null,
     isAbleToSell: false,
     status: "active",
-    avatar: "/AnyaForgerAvatar.jpg",
+    avatar: "/Screenshot 2026-07-27 151337.png",
     role: "CasualUser"
   },
   {
     id: 2,
-    fullname: "Loid Forger",
+    fullname: "Buyer B",
     email: "Loidthichloichoi@gmail.com",
     password: "LoidisLoid",
     cccd: "079090123456",
@@ -22,12 +22,12 @@ export const usersData = [
     matsauCCCD: "mock_url_back",
     isAbleToSell: true,
     status: "active",
-    avatar: "/LoidForgerUser.jpg",
+    avatar: "/Screenshot 2026-07-27 151337.png",
     role: "CasualSeller"
   },
   {
     id: 3,
-    fullname: "Yor Forger",
+    fullname: "Shop Owner",
     email: "YorGoldForGirlForMyForgerFamilu@gmail.com",
     password: "YorGirlShopshoping97",
     cccd: "079090654321",
@@ -35,12 +35,12 @@ export const usersData = [
     matsauCCCD: "mock_url_back",
     isAbleToSell: true,
     status: "active",
-    avatar: "/YorForgerUser.jpg",
+    avatar: "/Screenshot 2026-07-27 151337.png",
     role: "Shopper"
   },
   {
     id: 4,
-    fullname: "Bond Forger",
+    fullname: "Admin User",
     email: "MailMailGoGo@gmail.com",
     password: "Letgogo11",
     cccd: "079090999999",
@@ -48,7 +48,7 @@ export const usersData = [
     matsauCCCD: "mock_url_back",
     isAbleToSell: false,
     status: "active",
-    avatar: "/BonForgerUser.jpg",
+    avatar: "/Screenshot 2026-07-27 151337.png",
     role: "Admin"
   }
 ];
@@ -56,12 +56,12 @@ export const usersData = [
 export const shopsData = [
   {
     id: "SHOP_01",
-    name: "For Yor Fashion",
+    name: "For Your Fashion",
     lat: 10.8490, 
     lng: 106.7530,
     establishedDate: "2025-09-09",
     status: "active",
-    logoAvatar: "/YorForgerUser.jpg",
+    logoAvatar: "/Screenshot 2026-07-27 151337.png",
     ownerId: 3
   }
 ];
