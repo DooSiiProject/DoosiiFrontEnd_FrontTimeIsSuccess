@@ -79,10 +79,10 @@ const Login = () => {
         <div className="text-center pt-4 border-t border-slate-100">
           <p className="text-xs text-slate-500 mb-2 font-medium">Đăng nhập nhanh (Dành cho Tester):</p>
           <div className="grid grid-cols-2 gap-2 mb-4">
-            <button type="button" onClick={() => { setEmail('AnyaWithThinkingSenne@gmail.com'); setPassword('Chunnimommy'); }} className="text-xs py-2 bg-pink-50 text-pink-600 rounded-lg font-bold hover:bg-pink-100 transition">Anya (Casual)</button>
-            <button type="button" onClick={() => { setEmail('Loidthichloichoi@gmail.com'); setPassword('LoidisLoid'); }} className="text-xs py-2 bg-blue-50 text-blue-600 rounded-lg font-bold hover:bg-blue-100 transition">Loid (Seller)</button>
-            <button type="button" onClick={() => { setEmail('YorGoldForGirlForMyForgerFamilu@gmail.com'); setPassword('YorGirlShopshoping97'); }} className="text-xs py-2 bg-purple-50 text-purple-600 rounded-lg font-bold hover:bg-purple-100 transition">Yor (Shopper)</button>
-            <button type="button" onClick={() => { setEmail('MailMailGoGo@gmail.com'); setPassword('Letgogo11'); }} className="text-xs py-2 bg-slate-100 text-slate-600 rounded-lg font-bold hover:bg-slate-200 transition">Bond (Admin)</button>
+            <button type="button" onClick={() => { setEmail('AnyaWithThinkingSenne@gmail.com'); setPassword('Chunnimommy'); }} className="text-xs py-2 bg-pink-50 text-pink-600 rounded-lg font-bold hover:bg-pink-100 transition">Buyer A (Casual)</button>
+            <button type="button" onClick={() => { setEmail('Loidthichloichoi@gmail.com'); setPassword('LoidisLoid'); }} className="text-xs py-2 bg-blue-50 text-blue-600 rounded-lg font-bold hover:bg-blue-100 transition">Buyer B (Seller)</button>
+            <button type="button" onClick={() => { setEmail('YorGoldForGirlForMyForgerFamilu@gmail.com'); setPassword('YorGirlShopshoping97'); }} className="text-xs py-2 bg-purple-50 text-purple-600 rounded-lg font-bold hover:bg-purple-100 transition">Shopper</button>
+            <button type="button" onClick={() => { setEmail('MailMailGoGo@gmail.com'); setPassword('Letgogo11'); }} className="text-xs py-2 bg-slate-100 text-slate-600 rounded-lg font-bold hover:bg-slate-200 transition">Admin</button>
           </div>
           <Link to="/" className="text-sm font-medium text-slate-600 hover:text-slate-900 transition">
             &larr; Về lại trang chủ (Guest)
