@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Doosii.BLL")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+da9e6c07270f85d8777b649c899937dcc8e8ebea")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+666a6e27908f89da24a7d38122104a29d213eca2")]
 [assembly: System.Reflection.AssemblyProductAttribute("Doosii.BLL")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Doosii.BLL")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
