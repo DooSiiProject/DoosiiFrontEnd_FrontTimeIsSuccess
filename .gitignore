@@ -1,0 +1,67 @@
+## Dotnet Core / .NET 9 - .gitignore chuẩn cho Solution 3-Layer
+
+## Build results - bin/ và obj/ KHÔNG được commit
+[Bb]in/
+[Oo]bj/
+
+## Visual Studio files
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+## User-specific files
+*.rsuser
+*.userprefs
+
+## Build log
+*.log
+*.tlog
+
+## MSBuild generated
+*.VisualState.xml
+TestResult.xml
+[Tt]est[Rr]esult*/
+BuildLog.htm
+
+## NuGet packages folder
+.nuget/
+packages/
+*.nupkg
+*.snupkg
+
+## ASP.NET Scaffolding
+ScaffoldingReadMe.txt
+
+## Local publish folder
+publish/
+PublishScripts/
+
+## dotCover
+*.dotCover
+
+## Rider IDE
+.idea/
+*.sln.iml
+
+## OS generated
+Thumbs.db
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Desktop.ini
+
+## Temp files
+*.tmp
+*.temp
+*.cache
+*.bak
+
+## Secrets (KHÔNG commit secrets lên GitHub)
+appsettings.Production.json
+secrets.json
+.env
