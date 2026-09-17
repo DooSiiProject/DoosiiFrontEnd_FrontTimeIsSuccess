@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -9,15 +9,16 @@ using Doosii.DAL.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. Cấu hình EF Core với SQL Server
+// 1. Cáº¥u hÃ¬nh EF Core vá»›i SQL Server
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(connectionString));
 
-// 2. Đăng ký Dependency Injection cho Services
+// 2. ÄÄƒng kÃ½ Dependency Injection cho Services
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IUserService, UserService>();
 
-// 3. Cấu hình JWT Authentication
+// 3. Cáº¥u hÃ¬nh JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
 var secretKey = jwtSettings["SecretKey"] ?? "SuperSecretKeyForSecondHandMarketAuthApi123456!";
 var key = Encoding.UTF8.GetBytes(secretKey);
@@ -48,14 +49,14 @@ builder.Services.AddAuthorization();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
-// 4. Cấu hình Swagger có nút Authorize với Bearer Token
+// 4. Cáº¥u hÃ¬nh Swagger cÃ³ nÃºt Authorize vá»›i Bearer Token
 builder.Services.AddSwaggerGen(options =>
 {
     options.SwaggerDoc("v1", new OpenApiInfo
     {
         Title = "Doosii Auth API",
         Version = "v1",
-        Description = "Web API Authentication cho sàn buôn bán đồ si Doosii"
+        Description = "Web API Authentication cho sÃ n buÃ´n bÃ¡n Ä‘á»“ si Doosii"
     });
 
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -65,7 +66,7 @@ builder.Services.AddSwaggerGen(options =>
         Scheme = "Bearer",
         BearerFormat = "JWT",
         In = ParameterLocation.Header,
-        Description = "Nhập token JWT dạng: {your_token}"
+        Description = "Nháº­p token JWT dáº¡ng: {your_token}"
     });
 
     options.AddSecurityRequirement(new OpenApiSecurityRequirement
@@ -86,7 +87,7 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
-// 5. Tự động áp dụng EF Core Code-First Migration khi ứng dụng khởi chạy
+// 5. Tá»± Ä‘á»™ng Ã¡p dá»¥ng EF Core Code-First Migration khi á»©ng dá»¥ng khá»Ÿi cháº¡y
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;

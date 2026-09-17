@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Doosii.DAL.Models;
 
 namespace Doosii.DAL.Data
@@ -10,6 +10,7 @@ namespace Doosii.DAL.Data
         }
 
         public DbSet<User> Users { get; set; }
+        public DbSet<MerchantProfile> MerchantProfiles { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -17,8 +18,24 @@ namespace Doosii.DAL.Data
 
             modelBuilder.Entity<User>(entity =>
             {
-                entity.HasIndex(u => u.Email)
-                      .IsUnique();
+                entity.ToTable("Users", "auth");
+                entity.HasIndex(u => u.Email).IsUnique();
+            });
+
+            modelBuilder.Entity<MerchantProfile>(entity =>
+            {
+                entity.ToTable("MerchantProfiles", "auth");
+
+                entity.HasOne(m => m.User)
+                      .WithOne(u => u.MerchantProfile)
+                      .HasForeignKey<MerchantProfile>(m => m.UserId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(m => m.UserId).IsUnique();
+
+                entity.Property(m => m.KycStatus)
+                      .HasMaxLength(20)
+                      .HasDefaultValue("PENDING");
             });
         }
     }

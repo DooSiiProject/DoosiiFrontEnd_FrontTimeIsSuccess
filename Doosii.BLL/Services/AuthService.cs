@@ -1,4 +1,4 @@
-using System.IdentityModel.Tokens.Jwt;
+﻿using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
@@ -37,7 +37,7 @@ namespace Doosii.BLL.Services
                 Email = request.Email.Trim(),
                 FullName = request.FullName.Trim(),
                 PasswordHash = passwordHash,
-                Role = "User",
+                Role = "Customer",
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -52,13 +52,13 @@ namespace Doosii.BLL.Services
             var user = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == request.Email.ToLower());
             if (user == null)
             {
-                throw new UnauthorizedAccessException("Email hoặc mật khẩu không chính xác.");
+                throw new UnauthorizedAccessException("Email hoáº·c máº­t kháº©u khÃ´ng chÃ­nh xÃ¡c.");
             }
 
             bool isPasswordValid = BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash);
             if (!isPasswordValid)
             {
-                throw new UnauthorizedAccessException("Email hoặc mật khẩu không chính xác.");
+                throw new UnauthorizedAccessException("Email hoáº·c máº­t kháº©u khÃ´ng chÃ­nh xÃ¡c.");
             }
 
             string token = GenerateJwtToken(user);
@@ -75,7 +75,7 @@ namespace Doosii.BLL.Services
             var user = await _context.Users.FindAsync(userId);
             if (user == null)
             {
-                throw new KeyNotFoundException("Không tìm thấy người dùng.");
+                throw new KeyNotFoundException("KhÃ´ng tÃ¬m tháº¥y ngÆ°á»i dÃ¹ng.");
             }
 
             return MapToUserDto(user);

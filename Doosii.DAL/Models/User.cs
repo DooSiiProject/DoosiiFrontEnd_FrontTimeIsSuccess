@@ -1,9 +1,9 @@
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Doosii.DAL.Models
 {
-    [Table("Users")]
+    [Table("Users", Schema = "auth")]
     public class User
     {
         [Key]
@@ -24,10 +24,19 @@ namespace Doosii.DAL.Models
 
         [Required]
         [MaxLength(50)]
-        public string Role { get; set; } = "User";
+        public string Role { get; set; } = "Customer";
+
+        [MaxLength(500)]
+        public string? AvatarUrl { get; set; }
+
+        [MaxLength(500)]
+        public string? DeliveryAddress { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public DateTime? UpdatedAt { get; set; }
+
+        // Navigation
+        public MerchantProfile? MerchantProfile { get; set; }
     }
 }
