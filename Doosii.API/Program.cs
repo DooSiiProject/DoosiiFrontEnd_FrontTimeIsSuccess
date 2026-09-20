@@ -17,6 +17,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // 2. ÄÄƒng kÃ½ Dependency Injection cho Services
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IStoreService, StoreService>();
+builder.Services.AddScoped<IProductService, ProductService>();
 
 // 3. Cáº¥u hÃ¬nh JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
