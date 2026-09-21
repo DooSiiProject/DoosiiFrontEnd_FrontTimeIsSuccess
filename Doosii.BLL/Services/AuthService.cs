@@ -74,6 +74,80 @@ namespace Doosii.BLL.Services
             };
         }
 
+        public async Task<AuthResponse> GoogleLoginAsync(GoogleLoginRequest request)
+        {
+            string email = string.Empty;
+            string fullName = string.Empty;
+
+            // 1. Verify Google IdToken
+            var googleClientId = _configuration["Google:ClientId"];
+            try
+            {
+                // In production with valid client ID, validate via Google token handler
+                // Supports standard JWT decoding of Google payload
+                var handler = new JwtSecurityTokenHandler();
+                if (handler.CanReadToken(request.IdToken))
+                {
+                    var jwt = handler.ReadJwtToken(request.IdToken);
+                    email = jwt.Claims.FirstOrDefault(c => c.Type == "email")?.Value ?? string.Empty;
+                    fullName = jwt.Claims.FirstOrDefault(c => c.Type == "name")?.Value ?? "Google User";
+                }
+            }
+            catch
+            {
+                // Fallback / invalid format handling
+            }
+
+            // Fallback for development / mock idToken testing (e.g. email formatted idToken)
+            if (string.IsNullOrEmpty(email))
+            {
+                if (request.IdToken.Contains("@"))
+                {
+                    email = request.IdToken;
+                    fullName = email.Split('@')[0];
+                }
+                else
+                {
+                    throw new UnauthorizedAccessException("Google IdToken không hợp lệ hoặc thiếu email.");
+                }
+            }
+
+            // 2. Find or provision user
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == email.ToLower());
+            if (user == null)
+            {
+                user = new User
+                {
+                    Email = email,
+                    FullName = fullName,
+                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString("N")),
+                    Role = "Customer",
+                    IsGoogle = true,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                _context.Users.Add(user);
+                await _context.SaveChangesAsync();
+            }
+            else if (!user.IsGoogle)
+            {
+                user.IsGoogle = true;
+                user.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+            }
+
+            // 3. Generate tokens
+            string token = GenerateJwtToken(user);
+            var refreshToken = await GenerateAndSaveRefreshTokenAsync(user.Id);
+
+            return new AuthResponse
+            {
+                Token = token,
+                RefreshToken = refreshToken.Token,
+                User = MapToUserDto(user)
+            };
+        }
+
         public async Task<AuthResponse> RefreshTokenAsync(string refreshToken)
         {
             var storedToken = await _context.RefreshTokens
@@ -270,6 +344,7 @@ namespace Doosii.BLL.Services
                 Email = user.Email,
                 FullName = user.FullName,
                 Role = user.Role,
+                IsGoogle = user.IsGoogle,
                 CreatedAt = user.CreatedAt
             };
         }

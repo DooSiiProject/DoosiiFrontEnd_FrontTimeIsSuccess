@@ -61,6 +61,27 @@ namespace Doosii.API.Controllers
         }
 
         /// <summary>
+        /// Đăng nhập / Đăng ký bằng Google OAuth
+        /// </summary>
+        [HttpPost("google")]
+        public async Task<IActionResult> GoogleLogin([FromBody] GoogleLoginRequest request)
+        {
+            try
+            {
+                var result = await _authService.GoogleLoginAsync(request);
+                return Ok(ApiResponse<AuthResponse>.SuccessResponse(result, "Đăng nhập Google thành công."));
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(ApiResponse<AuthResponse>.ErrorResponse(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, ApiResponse<AuthResponse>.ErrorResponse("Đã xảy ra lỗi máy chủ nội bộ.", new List<string> { ex.Message }));
+            }
+        }
+
+        /// <summary>
         /// Làm mới Access Token bằng Refresh Token
         /// </summary>
         [HttpPost("refresh")]

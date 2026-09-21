@@ -24,7 +24,9 @@ namespace Doosii.DAL.Models
 
         [Required]
         [MaxLength(50)]
-        public string Role { get; set; } = "User";
+        public string Role { get; set; } = "Customer";
+
+        public bool IsGoogle { get; set; } = false;
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

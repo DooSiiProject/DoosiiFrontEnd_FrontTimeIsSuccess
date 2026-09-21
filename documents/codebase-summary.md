@@ -13,16 +13,16 @@ src/
 │
 ├── Doosii.API/                    # Web API Host (Controllers, Swagger, Middleware)
 │   ├── Controllers/
-│   │   └── AuthController.cs      # Endpoints: /register, /login, /refresh, /forgot-password, /verify-otp, /reset-password, /me
+│   │   └── AuthController.cs      # Endpoints: /register, /login, /google, /refresh, /forgot-password, /verify-otp, /reset-password, /me
 │   ├── Properties/
 │   │   └── launchSettings.json    # http: 5241, https: 7117
-│   ├── appsettings.json           # Connection string, JWT secret & settings
+│   ├── appsettings.json           # Connection string, JWT secret, Google ClientId
 │   └── Program.cs                 # DI configuration, EF migration, pipeline setup
 │
 ├── Doosii.BLL/                    # Business Logic Layer
 │   ├── Common/
 │   │   └── ApiResponse.cs         # Unified API response wrapper { success, message, data, errors }
-│   ├── DTOs/                      # Data Transfer Objects (AuthResponse, LoginRequest, PasswordResetDtos, RefreshTokenRequest)
+│   ├── DTOs/                      # Data Transfer Objects (AuthResponse, LoginRequest, GoogleLoginRequest, PasswordResetDtos, RefreshTokenRequest)
 │   ├── Interfaces/                # Contracts (IAuthService, IEmailService)
 │   └── Services/                  # Business implementations (AuthService, EmailService)
 │
