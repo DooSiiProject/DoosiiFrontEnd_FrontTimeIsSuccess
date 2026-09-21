@@ -62,11 +62,41 @@ namespace Doosii.BLL.Services
             }
 
             string token = GenerateJwtToken(user);
+            var refreshToken = await GenerateAndSaveRefreshTokenAsync(user.Id);
 
             return new AuthResponse
             {
                 Token = token,
+                RefreshToken = refreshToken.Token,
                 User = MapToUserDto(user)
+            };
+        }
+
+        public async Task<AuthResponse> RefreshTokenAsync(string refreshToken)
+        {
+            var storedToken = await _context.RefreshTokens
+                .Include(r => r.User)
+                .FirstOrDefaultAsync(r => r.Token == refreshToken);
+
+            if (storedToken == null || !storedToken.IsActive)
+            {
+                throw new UnauthorizedAccessException("RefreshToken không hợp lệ hoặc đã hết hạn.");
+            }
+
+            // Revoke the old token (Token Rotation for security)
+            storedToken.IsRevoked = true;
+
+            // Generate new pair
+            string newJwtToken = GenerateJwtToken(storedToken.User);
+            var newRefreshToken = await GenerateAndSaveRefreshTokenAsync(storedToken.UserId);
+
+            await _context.SaveChangesAsync();
+
+            return new AuthResponse
+            {
+                Token = newJwtToken,
+                RefreshToken = newRefreshToken.Token,
+                User = MapToUserDto(storedToken.User)
             };
         }
 
@@ -79,6 +109,28 @@ namespace Doosii.BLL.Services
             }
 
             return MapToUserDto(user);
+        }
+
+        private async Task<RefreshToken> GenerateAndSaveRefreshTokenAsync(int userId)
+        {
+            var randomNumber = new byte[64];
+            using var rng = System.Security.Cryptography.RandomNumberGenerator.Create();
+            rng.GetBytes(randomNumber);
+            var tokenString = Convert.ToBase64String(randomNumber);
+
+            var refreshToken = new RefreshToken
+            {
+                UserId = userId,
+                Token = tokenString,
+                ExpiresAt = DateTime.UtcNow.AddDays(7), // 7 days validity
+                IsRevoked = false,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _context.RefreshTokens.Add(refreshToken);
+            await _context.SaveChangesAsync();
+
+            return refreshToken;
         }
 
         private string GenerateJwtToken(User user)

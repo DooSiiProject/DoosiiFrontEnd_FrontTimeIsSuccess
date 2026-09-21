@@ -10,6 +10,7 @@ namespace Doosii.DAL.Data
         }
 
         public DbSet<User> Users { get; set; }
+        public DbSet<RefreshToken> RefreshTokens { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -19,6 +20,17 @@ namespace Doosii.DAL.Data
             {
                 entity.HasIndex(u => u.Email)
                       .IsUnique();
+            });
+
+            modelBuilder.Entity<RefreshToken>(entity =>
+            {
+                entity.HasIndex(r => r.Token)
+                      .IsUnique();
+
+                entity.HasOne(r => r.User)
+                      .WithMany()
+                      .HasForeignKey(r => r.UserId)
+                      .OnDelete(DeleteBehavior.Cascade);
             });
         }
     }

@@ -61,6 +61,27 @@ namespace Doosii.API.Controllers
         }
 
         /// <summary>
+        /// Làm mới Access Token bằng Refresh Token
+        /// </summary>
+        [HttpPost("refresh")]
+        public async Task<IActionResult> Refresh([FromBody] RefreshTokenRequest request)
+        {
+            try
+            {
+                var result = await _authService.RefreshTokenAsync(request.RefreshToken);
+                return Ok(ApiResponse<AuthResponse>.SuccessResponse(result, "Làm mới token thành công."));
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(ApiResponse<AuthResponse>.ErrorResponse(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, ApiResponse<AuthResponse>.ErrorResponse("Đã xảy ra lỗi máy chủ nội bộ.", new List<string> { ex.Message }));
+            }
+        }
+
+        /// <summary>
         /// Lấy thông tin tài khoản đang đăng nhập (Yêu cầu JWT Bearer Token)
         /// </summary>
         [HttpGet("me")]

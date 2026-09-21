@@ -1,4 +1,4 @@
-﻿# Doosii - Roadmap & Task Tracker (Backend Team Assignment)
+# Doosii - Roadmap & Task Tracker (Backend Team Assignment)
 
 ## 1. Overview & Team Allocation Strategy
 
@@ -63,7 +63,7 @@ The backend workload is divided **50 / 50** between **Wee** and **Tri** based on
 - [x] `GET /api/auth/me` (Bearer token validation) `[Completed]`
 - [ ] `[Wee]` 6-digit OTP email verification for registration & password reset
 - [ ] `[Wee]` Google OAuth login integration (`IsGoogle = true`)
-- [ ] `[Wee]` Refresh token mechanism (`POST /api/auth/refresh`)
+- [x] `[Wee]` Refresh token mechanism (`POST /api/auth/refresh`) `[Completed]`
 - [ ] `[Tri]` User profile update API (`PUT /api/users/profile`, avatar to Cloudinary)
 - [ ] `[Tri]` Store KYC application submission API (`POST /api/users/seller-application`)
 
