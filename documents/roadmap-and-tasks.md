@@ -95,9 +95,9 @@ The backend workload is divided **50 / 50** between **Wee** and **Tri** based on
 
 ### Module 4: Escrow & Order Processing [Track 2: Wee]
 *Domain Schema: `order`*
-- [ ] `[Wee]` EF Core Entities: `Order`, `OrderItem`, `EscrowTransaction`, `PaymentLog`, `Dispute`, `WithdrawalRequest`
-- [ ] `[Wee]` Implement `IProductLockService` contract to reserve items during checkout
-- [ ] `[Wee]` Create Escrow Order API (`POST /api/orders/create-escrow`) with 2–3% fee calculation
+- [x] `[Wee]` EF Core Entities: `Order`, `OrderItem`, `EscrowTransaction`, `PaymentLog`, `Dispute`, `WithdrawalRequest` `[Completed]`
+- [x] `[Wee]` Implement `IProductLockService` contract to reserve items during checkout `[Completed]`
+- [x] `[Wee]` Create Escrow Order API (`POST /api/orders/create-escrow`) with 2.5% fee calculation & order tracking (`GET /api/orders/{id}`, `/my-purchases`, `/my-sales`) `[Completed]`
 - [ ] `[Wee]` PayOS / SePay dynamic VietQR code generator (`DOSI <OrderId>`)
 - [ ] `[Wee]` Secure PayOS Webhook endpoint: HMAC signature validation, idempotency, move to `ESCROW_HOLDING`
 - [ ] `[Wee]` Seller shipping carrier & tracking code update API (move to `IN_TRANSIT`)

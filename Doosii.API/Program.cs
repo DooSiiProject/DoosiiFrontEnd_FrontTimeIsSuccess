@@ -17,6 +17,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // 2. Đăng ký Dependency Injection cho Services
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IProductLockService, MockProductLockService>();
+builder.Services.AddScoped<IOrderService, OrderService>();
 
 // 3. Cấu hình JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");

@@ -13,7 +13,8 @@ src/
 │
 ├── Doosii.API/                    # Web API Host (Controllers, Swagger, Middleware)
 │   ├── Controllers/
-│   │   └── AuthController.cs      # Endpoints: /register, /login, /google, /refresh, /forgot-password, /verify-otp, /reset-password, /me
+│   │   ├── AuthController.cs      # Endpoints: /register, /login, /google, /refresh, /forgot-password, /verify-otp, /reset-password, /me
+│   │   └── OrdersController.cs    # Endpoints: /create-escrow, /{id}, /my-purchases, /my-sales
 │   ├── Properties/
 │   │   └── launchSettings.json    # http: 5241, https: 7117
 │   ├── appsettings.json           # Connection string, JWT secret, Google ClientId
@@ -22,15 +23,17 @@ src/
 ├── Doosii.BLL/                    # Business Logic Layer
 │   ├── Common/
 │   │   └── ApiResponse.cs         # Unified API response wrapper { success, message, data, errors }
-│   ├── DTOs/                      # Data Transfer Objects (AuthResponse, LoginRequest, GoogleLoginRequest, PasswordResetDtos, RefreshTokenRequest)
-│   ├── Interfaces/                # Contracts (IAuthService, IEmailService)
-│   └── Services/                  # Business implementations (AuthService, EmailService)
+│   ├── DTOs/                      # Data Transfer Objects (Auth, PasswordReset, RefreshToken, EscrowOrder, OrderResponse)
+│   ├── Interfaces/                # Contracts (IAuthService, IEmailService, IProductLockService, IOrderService)
+│   └── Services/                  # Implementations (AuthService, EmailService, MockProductLockService, OrderService)
 │
 └── Doosii.DAL/                    # Data Access Layer
     ├── Data/
-    │   └── AppDbContext.cs        # EF Core DbContext with User, RefreshToken, EmailOtp entities
+    │   └── AppDbContext.cs        # EF Core DbContext with User, Order, Escrow, Dispute entities
     ├── Migrations/                # EF Core Code-First migration history
-    └── Models/                    # Database entity models (User.cs, RefreshToken.cs, EmailOtp.cs)
+    └── Models/                    # Database entity models
+        ├── User.cs, RefreshToken.cs, EmailOtp.cs
+        └── Order/ (Order.cs, OrderItem.cs, EscrowTransaction.cs, PaymentLog.cs, Dispute.cs, WithdrawalRequest.cs)
 ```
 
 ---
