@@ -11,6 +11,7 @@ namespace Doosii.DAL.Data
 
         public DbSet<User> Users { get; set; }
         public DbSet<RefreshToken> RefreshTokens { get; set; }
+        public DbSet<EmailOtp> EmailOtps { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -31,6 +32,11 @@ namespace Doosii.DAL.Data
                       .WithMany()
                       .HasForeignKey(r => r.UserId)
                       .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<EmailOtp>(entity =>
+            {
+                entity.HasIndex(o => new { o.Email, o.OtpCode, o.Purpose });
             });
         }
     }

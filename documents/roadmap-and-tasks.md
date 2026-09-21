@@ -61,7 +61,7 @@ The backend workload is divided **50 / 50** between **Wee** and **Tri** based on
 - [x] `POST /api/auth/register` `[Completed]`
 - [x] `POST /api/auth/login` (JWT token issuance) `[Completed]`
 - [x] `GET /api/auth/me` (Bearer token validation) `[Completed]`
-- [ ] `[Wee]` 6-digit OTP email verification for registration & password reset
+- [x] `[Wee]` 6-digit OTP email verification for registration & password reset `[Completed]`
 - [ ] `[Wee]` Google OAuth login integration (`IsGoogle = true`)
 - [x] `[Wee]` Refresh token mechanism (`POST /api/auth/refresh`) `[Completed]`
 - [ ] `[Tri]` User profile update API (`PUT /api/users/profile`, avatar to Cloudinary)

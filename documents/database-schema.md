@@ -1,4 +1,4 @@
-﻿# Doosii - Database Schema & ERD
+# Doosii - Database Schema & ERD
 
 ## 1. Overview & Strategy
 - **Engine**: Microsoft SQL Server 2022
@@ -52,9 +52,19 @@ erDiagram
     auth_RefreshTokens {
         int Id PK
         int UserId FK
-        string Token
+        string Token UK
         datetime ExpiresAt
         bool IsRevoked
+        datetime CreatedAt
+    }
+
+    auth_EmailOtps {
+        int Id PK
+        string Email
+        string OtpCode
+        string Purpose "ForgotPassword | RegisterVerification"
+        datetime ExpiresAt
+        bool IsUsed
         datetime CreatedAt
     }
 
@@ -275,4 +285,6 @@ erDiagram
   - Fallbacks: `CANCELLED` (unpaid after 15m), `DISPUTED` (buyer files complaint), `REFUNDED` (buyer return approved).
 - **Unique Indexes**:
   - `IX_Users_Email` (`auth.Users.Email`)
+  - `IX_RefreshTokens_Token` (`auth.RefreshTokens.Token`)
+  - `IX_EmailOtps_Email_OtpCode_Purpose` (`auth.EmailOtps.[Email, OtpCode, Purpose]`)
   - `IX_Categories_Slug` (`store.Categories.Slug`)

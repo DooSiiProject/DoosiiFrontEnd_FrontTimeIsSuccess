@@ -15,11 +15,13 @@ namespace Doosii.BLL.Services
     {
         private readonly AppDbContext _context;
         private readonly IConfiguration _configuration;
+        private readonly IEmailService _emailService;
 
-        public AuthService(AppDbContext context, IConfiguration configuration)
+        public AuthService(AppDbContext context, IConfiguration configuration, IEmailService emailService)
         {
             _context = context;
             _configuration = configuration;
+            _emailService = emailService;
         }
 
         public async Task<UserDto> RegisterAsync(RegisterRequest request)
@@ -109,6 +111,104 @@ namespace Doosii.BLL.Services
             }
 
             return MapToUserDto(user);
+        }
+
+        public async Task ForgotPasswordAsync(string email)
+        {
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == email.ToLower());
+            if (user == null)
+            {
+                // Return silently for security (avoid email enumeration attacks)
+                return;
+            }
+
+            // Invalidate any previous unused OTPs for this email and purpose
+            var existingOtps = await _context.EmailOtps
+                .Where(o => o.Email.ToLower() == email.ToLower() && o.Purpose == "ForgotPassword" && !o.IsUsed)
+                .ToListAsync();
+
+            foreach (var otp in existingOtps)
+            {
+                otp.IsUsed = true;
+            }
+
+            // Generate cryptographically secure 6-digit OTP
+            var otpCode = Random.Shared.Next(100000, 999999).ToString();
+
+            var newOtp = new EmailOtp
+            {
+                Email = user.Email,
+                OtpCode = otpCode,
+                Purpose = "ForgotPassword",
+                ExpiresAt = DateTime.UtcNow.AddMinutes(5), // 5 minutes validity
+                IsUsed = false,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _context.EmailOtps.Add(newOtp);
+            await _context.SaveChangesAsync();
+
+            // Send via email service
+            await _emailService.SendOtpEmailAsync(user.Email, otpCode, "ForgotPassword");
+        }
+
+        public async Task<bool> VerifyOtpAsync(VerifyOtpRequest request)
+        {
+            var otp = await _context.EmailOtps
+                .Where(o => o.Email.ToLower() == request.Email.ToLower() 
+                         && o.OtpCode == request.OtpCode 
+                         && o.Purpose == request.Purpose 
+                         && !o.IsUsed)
+                .OrderByDescending(o => o.CreatedAt)
+                .FirstOrDefaultAsync();
+
+            if (otp == null || DateTime.UtcNow > otp.ExpiresAt)
+            {
+                throw new InvalidOperationException("Mã OTP không chính xác hoặc đã hết hạn.");
+            }
+
+            return true;
+        }
+
+        public async Task ResetPasswordAsync(ResetPasswordRequest request)
+        {
+            var otp = await _context.EmailOtps
+                .Where(o => o.Email.ToLower() == request.Email.ToLower() 
+                         && o.OtpCode == request.OtpCode 
+                         && o.Purpose == "ForgotPassword" 
+                         && !o.IsUsed)
+                .OrderByDescending(o => o.CreatedAt)
+                .FirstOrDefaultAsync();
+
+            if (otp == null || DateTime.UtcNow > otp.ExpiresAt)
+            {
+                throw new InvalidOperationException("Mã OTP không chính xác hoặc đã hết hạn.");
+            }
+
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == request.Email.ToLower());
+            if (user == null)
+            {
+                throw new KeyNotFoundException("Không tìm thấy người dùng với email này.");
+            }
+
+            // Mark OTP as used
+            otp.IsUsed = true;
+
+            // Update user's password
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+            user.UpdatedAt = DateTime.UtcNow;
+
+            // Revoke all existing refresh tokens for security
+            var userRefreshTokens = await _context.RefreshTokens
+                .Where(r => r.UserId == user.Id && !r.IsRevoked)
+                .ToListAsync();
+
+            foreach (var token in userRefreshTokens)
+            {
+                token.IsRevoked = true;
+            }
+
+            await _context.SaveChangesAsync();
         }
 
         private async Task<RefreshToken> GenerateAndSaveRefreshTokenAsync(int userId)

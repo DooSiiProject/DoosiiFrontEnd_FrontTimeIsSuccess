@@ -1,4 +1,4 @@
-﻿# Doosii - Codebase Summary & Local Setup
+# Doosii - Codebase Summary & Local Setup
 
 ## 1. Project Directory Map
 ```
@@ -13,22 +13,24 @@ src/
 │
 ├── Doosii.API/                    # Web API Host (Controllers, Swagger, Middleware)
 │   ├── Controllers/
-│   │   └── AuthController.cs      # Endpoints: /register, /login, /me
+│   │   └── AuthController.cs      # Endpoints: /register, /login, /refresh, /forgot-password, /verify-otp, /reset-password, /me
 │   ├── Properties/
 │   │   └── launchSettings.json    # http: 5241, https: 7117
 │   ├── appsettings.json           # Connection string, JWT secret & settings
 │   └── Program.cs                 # DI configuration, EF migration, pipeline setup
 │
 ├── Doosii.BLL/                    # Business Logic Layer
-│   ├── DTOs/                      # Data Transfer Objects (AuthResponse, LoginRequest, etc.)
-│   ├── Interfaces/                # Contracts (IAuthService)
-│   └── Services/                  # Business implementations (AuthService with BCrypt & JWT)
+│   ├── Common/
+│   │   └── ApiResponse.cs         # Unified API response wrapper { success, message, data, errors }
+│   ├── DTOs/                      # Data Transfer Objects (AuthResponse, LoginRequest, PasswordResetDtos, RefreshTokenRequest)
+│   ├── Interfaces/                # Contracts (IAuthService, IEmailService)
+│   └── Services/                  # Business implementations (AuthService, EmailService)
 │
 └── Doosii.DAL/                    # Data Access Layer
     ├── Data/
-    │   └── AppDbContext.cs        # EF Core DbContext with User entity & unique index
+    │   └── AppDbContext.cs        # EF Core DbContext with User, RefreshToken, EmailOtp entities
     ├── Migrations/                # EF Core Code-First migration history
-    └── Models/                    # Database entity models (User.cs)
+    └── Models/                    # Database entity models (User.cs, RefreshToken.cs, EmailOtp.cs)
 ```
 
 ---

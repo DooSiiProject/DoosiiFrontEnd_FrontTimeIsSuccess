@@ -1,4 +1,4 @@
-﻿# Doosii - API Specification
+# Doosii - API Specification
 
 ## 1. Overview & Conventions
 - **Base URL**: `http://localhost:5241/api` (or `https://localhost:7117/api`)
@@ -18,6 +18,7 @@
 | `POST` | `/api/auth/google` | Public | Sign in / register with Google OAuth payload |
 | `POST` | `/api/auth/refresh` | Public | Refresh expired access token using refresh token |
 | `POST` | `/api/auth/forgot-password` | Public | Send 6-digit OTP to user's registered email |
+| `POST` | `/api/auth/verify-otp` | Public | Verify 6-digit OTP code before proceeding to reset password |
 | `POST` | `/api/auth/reset-password` | Public | Reset password using verified OTP |
 | `GET` | `/api/auth/me` | Authenticated | Retrieve authenticated user's profile |
 | `PUT` | `/api/users/profile` | Authenticated | Update full name, avatar URL (Cloudinary), delivery address |
