@@ -20,6 +20,55 @@ namespace Doosii.API.Controllers
         }
 
         /// <summary>
+        /// Loc danh sach cac cua hang (public).
+        /// Ho tro loc theo style, price, rating, sap xep theo distance, rating, newest.
+        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> GetStores([FromQuery] StoreFilterQuery query)
+        {
+            // 1. Validate pagination
+            if (query.Page < 1 || query.PageSize < 1)
+            {
+                return BadRequest(ApiResponse.Fail("Invalid pagination parameters", new List<string> { "INVALID_PAGINATION" }));
+            }
+
+            // 2. Validate coordinates neu co truyen
+            if (query.Lat.HasValue || query.Lng.HasValue)
+            {
+                if (!query.Lat.HasValue || !query.Lng.HasValue ||
+                    query.Lat.Value < -90 || query.Lat.Value > 90 ||
+                    query.Lng.Value < -180 || query.Lng.Value > 180)
+                {
+                    return BadRequest(ApiResponse.Fail("Invalid coordinates", new List<string> { "INVALID_COORDINATES" }));
+                }
+            }
+
+            // 3. Validate sort by distance yeu cau toa do
+            var isSortByDistance = string.Equals(query.SortBy, "distance", StringComparison.OrdinalIgnoreCase);
+            if (isSortByDistance && (!query.Lat.HasValue || !query.Lng.HasValue))
+            {
+                return BadRequest(ApiResponse.Fail("Coordinates are required when sorting by distance", new List<string> { "MISSING_COORDINATES_FOR_DISTANCE_SORT" }));
+            }
+
+            // 4. Validate price range
+            if ((query.MinPrice.HasValue && query.MinPrice < 0) ||
+                (query.MaxPrice.HasValue && query.MaxPrice < 0) ||
+                (query.MinPrice.HasValue && query.MaxPrice.HasValue && query.MinPrice > query.MaxPrice))
+            {
+                return BadRequest(ApiResponse.Fail("Invalid price range", new List<string> { "INVALID_PRICE_RANGE" }));
+            }
+
+            // 5. Validate rating
+            if (query.MinRating.HasValue && (query.MinRating < 0 || query.MinRating > 5))
+            {
+                return BadRequest(ApiResponse.Fail("Invalid rating filter", new List<string> { "INVALID_RATING" }));
+            }
+
+            var result = await _storeService.GetStoresAsync(query);
+            return Ok(ApiResponse.Ok(result, "Stores retrieved successfully"));
+        }
+
+        /// <summary>
         /// Tao cua hang moi. Chi Seller da KYC APPROVED moi duoc tao.
         /// </summary>
         [HttpPost]

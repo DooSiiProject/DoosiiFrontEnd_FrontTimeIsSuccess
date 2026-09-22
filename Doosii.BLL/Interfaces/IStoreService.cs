@@ -7,5 +7,7 @@ namespace Doosii.BLL.Interfaces
         Task<StoreDto> CreateStoreAsync(int userId, CreateStoreRequest request);
         Task<StoreDto> UpdateStoreAsync(int userId, int storeId, UpdateStoreRequest request);
         Task<StoreDto> GetStoreAsync(int storeId);
+        Task<PagedResponse<NearbyStoreDto>> GetNearbyStoresAsync(NearbyStoreQuery query);
+        Task<PagedResponse<NearbyStoreDto>> GetStoresAsync(StoreFilterQuery query);
     }
 }
