@@ -14,7 +14,11 @@ src/
 ├── Doosii.API/                    # Web API Host (Controllers, Swagger, Middleware)
 │   ├── Controllers/
 │   │   ├── AuthController.cs      # Endpoints: /register, /login, /google, /refresh, /forgot-password, /verify-otp, /reset-password, /me
-│   │   └── OrdersController.cs    # Endpoints: /create-escrow, /{id}, /my-purchases, /my-sales
+│   │   ├── OrdersController.cs    # Endpoints: /create-escrow, /{id}, /my-purchases, /my-sales
+│   │   ├── UsersController.cs     # Endpoints: /profile, /seller-application, /seller-application/status
+│   │   ├── StoresController.cs    # Endpoints: /stores, /{storeId}, /{storeId}/products
+│   │   ├── ProductsController.cs  # Endpoints: /{productId} (PUT, DELETE)
+│   │   └── MapController.cs       # Endpoints: /nearby-stores (Haversine spatial calculation)
 │   ├── Properties/
 │   │   └── launchSettings.json    # http: 5241, https: 7117
 │   ├── appsettings.json           # Connection string, JWT secret, Google ClientId
@@ -23,16 +27,19 @@ src/
 ├── Doosii.BLL/                    # Business Logic Layer
 │   ├── Common/
 │   │   └── ApiResponse.cs         # Unified API response wrapper { success, message, data, errors }
-│   ├── DTOs/                      # Data Transfer Objects (Auth, PasswordReset, RefreshToken, EscrowOrder, OrderResponse)
-│   ├── Interfaces/                # Contracts (IAuthService, IEmailService, IProductLockService, IOrderService)
-│   └── Services/                  # Implementations (AuthService, EmailService, MockProductLockService, OrderService)
+│   ├── DTOs/                      # Data Transfer Objects (Auth, Orders, Stores, Products, Users, KYC, Map)
+│   ├── Helpers/
+│   │   └── GeoCalculator.cs       # Haversine distance calculator for Thrift Map radius
+│   ├── Interfaces/                # Contracts (IAuthService, IEmailService, IProductLockService, IOrderService, IUserService, IStoreService, IProductService)
+│   └── Services/                  # Implementations (AuthService, EmailService, MockProductLockService, OrderService, UserService, StoreService, ProductService)
 │
 └── Doosii.DAL/                    # Data Access Layer
     ├── Data/
-    │   └── AppDbContext.cs        # EF Core DbContext with User, Order, Escrow, Dispute entities
-    ├── Migrations/                # EF Core Code-First migration history
+    │   └── AppDbContext.cs        # EF Core DbContext with auth, store, and order schemas
+    ├── Migrations/                # EF Core Code-First migration history (Auth, Store, Escrow)
     └── Models/                    # Database entity models
-        ├── User.cs, RefreshToken.cs, EmailOtp.cs
+        ├── User.cs, RefreshToken.cs, EmailOtp.cs, MerchantProfile.cs
+        ├── Store/ (Store.cs, Category.cs, Product.cs, ProductImage.cs, StoreLocation.cs)
         └── Order/ (Order.cs, OrderItem.cs, EscrowTransaction.cs, PaymentLog.cs, Dispute.cs, WithdrawalRequest.cs)
 ```
 

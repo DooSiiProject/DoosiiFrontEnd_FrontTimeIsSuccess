@@ -23,16 +23,22 @@
 | `GET` | `/api/auth/me` | Authenticated | Retrieve authenticated user's profile |
 | `PUT` | `/api/users/profile` | Authenticated | Update full name, avatar URL (Cloudinary), delivery address |
 | `POST` | `/api/users/seller-application` | Customer | Submit store KYC application (store name, phone, address, coordinates, facade photo, ID card) |
+| `GET` | `/api/users/seller-application/status` | Customer | Check status of submitted KYC store application (`PENDING`, `APPROVED`, `REJECTED`) |
 
 ---
 
-### 2.2. Thrift Map & Store Discovery (`/api/stores`, `/api/map`)
+### 2.2. Thrift Map & Store Discovery (`/api/stores`, `/api/products`, `/api/map`)
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
 | `GET` | `/api/map/nearby-stores` | Public | Search stores by radius (`lat`, `lng`, `radiusKm` [1, 3, 5, 10]) |
-| `GET` | `/api/stores` | Public | Filter stores by style tags, business type (stall/chain/boutique), rating, price segment |
-| `GET` | `/api/stores/{storeId}` | Public | Store details, opening hours, directions link, rating summary |
-| `GET` | `/api/stores/{storeId}/products` | Public | Paginated list of store products (`AVAILABLE` only) |
+| `GET` | `/api/stores` | Public | Filter stores by style tags, rating, price segment, and sort by distance/rating/newest |
+| `POST` | `/api/stores` | Seller (KYC) | Create a new thrift store (Owner must be KYC Approved) |
+| `GET` | `/api/stores/{storeId}` | Public | Store details, opening hours, coordinates, rating summary |
+| `PUT` | `/api/stores/{storeId}` | Store Owner | Update store details (name, description, phone, address, hours, coordinates) |
+| `GET` | `/api/stores/{storeId}/products` | Public | Paginated list of store products (`AVAILABLE` only, 12 or 24 per page) |
+| `POST` | `/api/stores/{storeId}/products` | Store Owner | Add new clothing item to store inventory with images, size, condition % |
+| `PUT` | `/api/products/{productId}` | Product Owner | Update product title, price, description, images (cannot edit if `LOCKED` or `SOLD`) |
+| `DELETE` | `/api/products/{productId}` | Product Owner | Remove product from listing (cannot delete if `LOCKED` or `SOLD`) |
 | `POST` | `/api/stores/{storeId}/reviews` | Buyer | Add rating (1–5 stars), review text, and photos for a shop |
 
 ---
