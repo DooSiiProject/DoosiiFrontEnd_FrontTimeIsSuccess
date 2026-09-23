@@ -64,19 +64,19 @@ The backend workload is divided **50 / 50** between **Wee** and **Tri** based on
 - [x] `[Wee]` 6-digit OTP email verification for registration & password reset `[Completed]`
 - [x] `[Wee]` Google OAuth login integration (`IsGoogle = true`) `[Completed]`
 - [x] `[Wee]` Refresh token mechanism (`POST /api/auth/refresh`) `[Completed]`
-- [ ] `[Tri]` User profile update API (`PUT /api/users/profile`, avatar to Cloudinary)
-- [ ] `[Tri]` Store KYC application submission API (`POST /api/users/seller-application`)
+- [x] `[Tri]` User profile update API (`PUT /api/users/profile`) `[Completed]`
+- [x] `[Tri]` Store KYC application submission API (`POST /api/users/seller-application`) `[Completed]`
 
 ---
 
 ### Module 2: Thrift Map & Stores [Track 1: Tri]
 *Domain Schema: `store`*
-- [ ] `[Tri]` EF Core Entities: `Store`, `Category`, `Product`, `ProductImage`, `StoreLocation`
+- [x] `[Tri]` EF Core Entities: `Store`, `Category`, `Product`, `ProductImage`, `StoreLocation` `[Completed]`
 - [ ] `[Tri]` Cloudinary upload helper service for multi-image uploads (1–5 photos)
-- [ ] `[Tri]` Store CRUD & Product listing API (`AVAILABLE`, `LOCKED`, `SOLD`)
-- [ ] `[Tri]` Geolocation query API (`/api/map/nearby-stores`) using Haversine formula (1km, 3km, 5km, 10km)
-- [ ] `[Tri]` Store & style filtering (Vintage, Y2K, Streetwear, price range, store type)
-- [ ] `[Tri]` Store detail page & direction link API
+- [x] `[Tri]` Store CRUD & Product listing API (`AVAILABLE`, `LOCKED`, `SOLD`) `[Completed]`
+- [x] `[Tri]` Geolocation query API (`/api/map/nearby-stores`) using Haversine formula (1km, 3km, 5km, 10km) `[Completed]`
+- [x] `[Tri]` Store & style filtering (Vintage, Y2K, Streetwear, price range, store type) `[Completed]`
+- [x] `[Tri]` Store detail page & direction link API `[Completed]`
 - [ ] `[Tri]` Store reviews & 1–5 star rating API
 
 ---
