@@ -66,6 +66,7 @@
 | `POST` | `/api/orders/{id}/ship` | Seller | Submit shipping carrier and tracking code (moves to `IN_TRANSIT`) |
 | `POST` | `/api/orders/{id}/confirm-received` | Buyer | Confirm receipt of item, release funds to seller wallet (`COMPLETED_RELEASED`) |
 | `POST` | `/api/orders/{id}/dispute` | Buyer | File dispute within 24h with unboxing video / photos (moves to `DISPUTED`) |
+| `GET` | `/api/orders/{id}/dispute` | Authenticated | View dispute details of an order |
 | `GET` | `/api/orders/my-purchases` | Customer | Order history of bought items with status tracking |
 | `GET` | `/api/orders/my-sales` | Seller/Customer | Orders sold, pending fulfillment, or in escrow |
 
@@ -90,8 +91,10 @@
 | `POST` | `/api/admin/kyc-requests/{id}/verdict` | Admin | Approve or reject store with explanation |
 | `GET` | `/api/admin/disputes` | Admin | Review disputed escrow orders with unboxing proof |
 | `POST` | `/api/admin/disputes/{id}/arbitrate` | Admin | Rule in favor of Buyer (refund) or Seller (release funds) |
+| `GET` | `/api/admin/withdrawals` | Admin | List pending withdrawal requests from sellers |
+| `POST` | `/api/admin/withdrawals/{id}/process` | Admin | Approve or reject seller withdrawal request |
 | `GET` | `/api/admin/reports` | Admin | List flagged forum posts for moderation |
-| `GET` | `/api/admin/analytics` | Admin | GMV, escrow fee platform revenue, mega-announcement revenue |
+| `GET` | `/api/admin/analytics` | Admin | GMV, escrow fee platform revenue, orders & users metrics |
 
 ---
 

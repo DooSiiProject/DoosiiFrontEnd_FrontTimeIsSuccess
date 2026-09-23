@@ -12,5 +12,7 @@ namespace Doosii.BLL.Interfaces
         Task<OrderResponse> ConfirmOrderReceivedAsync(int orderId, int buyerId);
         Task<int> CancelExpiredOrdersAsync();
         Task<int> AutoCompleteDeliveredOrdersAsync();
+        Task<DisputeResponse> CreateDisputeAsync(int orderId, int buyerId, CreateDisputeRequest request);
+        Task<DisputeResponse?> GetOrderDisputeAsync(int orderId, int userId);
     }
 }

@@ -22,7 +22,8 @@ src/
 │   │   ├── StoresController.cs    # Endpoints: /stores, /{storeId}, /{storeId}/products
 │   │   ├── ProductsController.cs  # Endpoints: /{productId} (PUT, DELETE)
 │   │   ├── MapController.cs       # Endpoints: /nearby-stores (Haversine spatial calculation)
-│   │   └── SellerWalletController.cs # Endpoints: /seller/wallet, /seller/wallet/withdraw, /seller/wallet/withdrawals
+│   │   ├── SellerWalletController.cs # Endpoints: /seller/wallet, /seller/wallet/withdraw, /seller/wallet/withdrawals
+│   │   └── AdminController.cs     # Endpoints: /admin/kyc-requests, /admin/disputes, /admin/withdrawals, /admin/analytics
 │   ├── Properties/
 │   │   └── launchSettings.json    # http: 5241, https: 7117
 │   ├── appsettings.json           # Connection string, JWT secret, Google ClientId, PayOS config
@@ -31,11 +32,11 @@ src/
 ├── Doosii.BLL/                    # Business Logic Layer
 │   ├── Common/
 │   │   └── ApiResponse.cs         # Unified API response wrapper { success, message, data, errors }
-│   ├── DTOs/                      # Data Transfer Objects (Auth, Orders, Payments, Stores, Products, Users, KYC, Map, Wallet)
+│   ├── DTOs/                      # Data Transfer Objects (Auth, Orders, Payments, Stores, Products, Users, KYC, Map, Wallet, Disputes, Admin)
 │   ├── Helpers/
 │   │   └── GeoCalculator.cs       # Haversine distance calculator for Thrift Map radius
-│   ├── Interfaces/                # Contracts (IAuthService, IEmailService, IProductLockService, IOrderService, IPaymentService, IWalletService, IUserService, IStoreService, IProductService)
-│   └── Services/                  # Implementations (AuthService, EmailService, MockProductLockService, OrderService, PaymentService, WalletService, UserService, StoreService, ProductService)
+│   ├── Interfaces/                # Contracts (IAuthService, IEmailService, IProductLockService, IOrderService, IPaymentService, IWalletService, IAdminService, IUserService, IStoreService, IProductService)
+│   └── Services/                  # Implementations (AuthService, EmailService, MockProductLockService, OrderService, PaymentService, WalletService, AdminService, UserService, StoreService, ProductService)
 │
 └── Doosii.DAL/                    # Data Access Layer
     ├── Data/

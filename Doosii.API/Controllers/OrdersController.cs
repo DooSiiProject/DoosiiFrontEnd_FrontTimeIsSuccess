@@ -206,5 +206,75 @@ namespace Doosii.API.Controllers
                 return StatusCode(500, ApiResponse<OrderResponse>.ErrorResponse("Đã xảy ra lỗi máy chủ nội bộ.", new List<string> { ex.Message }));
             }
         }
+
+        /// <summary>
+        /// Người mua mở khiếu nại đơn hàng (trong vòng 24h, kèm video unboxing hoặc tối thiểu 2 ảnh lỗi)
+        /// </summary>
+        [HttpPost("{id:int}/dispute")]
+        public async Task<IActionResult> CreateDispute(int id, [FromBody] CreateDisputeRequest request)
+        {
+            var buyerId = GetCurrentUserId();
+            if (buyerId == null)
+            {
+                return Unauthorized(ApiResponse<DisputeResponse>.ErrorResponse("Token không hợp lệ hoặc thiếu thông tin định danh người dùng."));
+            }
+
+            try
+            {
+                var result = await _orderService.CreateDisputeAsync(id, buyerId.Value, request);
+                return Ok(ApiResponse<DisputeResponse>.SuccessResponse(result, "Mở khiếu nại thành công. Đơn hàng và tiền ký quỹ đã được đóng băng để Admin phân xử."));
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(ApiResponse<DisputeResponse>.ErrorResponse(ex.Message));
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(403, ApiResponse<DisputeResponse>.ErrorResponse(ex.Message));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ApiResponse<DisputeResponse>.ErrorResponse(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, ApiResponse<DisputeResponse>.ErrorResponse("Đã xảy ra lỗi máy chủ nội bộ.", new List<string> { ex.Message }));
+            }
+        }
+
+        /// <summary>
+        /// Xem thông tin khiếu nại của đơn hàng (Chỉ Người mua, Người bán hoặc Admin)
+        /// </summary>
+        [HttpGet("{id:int}/dispute")]
+        public async Task<IActionResult> GetOrderDispute(int id)
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null)
+            {
+                return Unauthorized(ApiResponse<DisputeResponse>.ErrorResponse("Token không hợp lệ hoặc thiếu thông tin định danh người dùng."));
+            }
+
+            try
+            {
+                var result = await _orderService.GetOrderDisputeAsync(id, userId.Value);
+                if (result == null)
+                {
+                    return NotFound(ApiResponse<DisputeResponse>.ErrorResponse("Đơn hàng này chưa có khiếu nại nào."));
+                }
+                return Ok(ApiResponse<DisputeResponse>.SuccessResponse(result, "Lấy thông tin khiếu nại thành công."));
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(ApiResponse<DisputeResponse>.ErrorResponse(ex.Message));
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(403, ApiResponse<DisputeResponse>.ErrorResponse(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, ApiResponse<DisputeResponse>.ErrorResponse("Đã xảy ra lỗi máy chủ nội bộ.", new List<string> { ex.Message }));
+            }
+        }
     }
 }

@@ -324,6 +324,141 @@ namespace Doosii.BLL.Services
             return autoOrders.Count;
         }
 
+        public async Task<DisputeResponse> CreateDisputeAsync(int orderId, int buyerId, CreateDisputeRequest request)
+        {
+            var order = await _context.Orders
+                .Include(o => o.Buyer)
+                .Include(o => o.Seller)
+                .Include(o => o.Dispute)
+                .FirstOrDefaultAsync(o => o.Id == orderId);
+
+            if (order == null)
+            {
+                throw new KeyNotFoundException($"Không tìm thấy đơn hàng #{orderId}.");
+            }
+
+            if (order.BuyerId != buyerId)
+            {
+                throw new UnauthorizedAccessException("Bạn không phải người mua của đơn hàng này.");
+            }
+
+            if (order.Dispute != null)
+            {
+                throw new InvalidOperationException("Đơn hàng này đã có khiếu nại đang được xử lý.");
+            }
+
+            // Kiểm tra điều kiện mở khiếu nại:
+            // Đơn hàng phải ở trạng thái IN_TRANSIT hoặc COMPLETED_RELEASED trong vòng 24h
+            bool canDispute = false;
+            if (order.Status == OrderStatus.InTransit)
+            {
+                canDispute = true;
+            }
+            else if (order.Status == OrderStatus.CompletedReleased)
+            {
+                var completedTime = order.CompletedAt ?? order.UpdatedAt ?? DateTime.UtcNow;
+                if (DateTime.UtcNow - completedTime <= TimeSpan.FromHours(24))
+                {
+                    canDispute = true;
+                }
+            }
+
+            if (!canDispute)
+            {
+                throw new InvalidOperationException($"Chỉ có thể khiếu nại khi đơn hàng đang giao hoặc trong vòng 24h kể từ khi nhận hàng. Trạng thái hiện tại: {order.Status}.");
+            }
+
+            // Kiểm tra bằng chứng: Phải có video hoặc tối thiểu 2 ảnh
+            bool hasVideo = !string.IsNullOrWhiteSpace(request.EvidenceVideoUrl);
+            int imageCount = request.EvidenceImages?.Count ?? 0;
+            if (!hasVideo && imageCount < 2)
+            {
+                throw new InvalidOperationException("Khiếu nại bắt buộc phải có video mở hộp (unboxing) hoặc tối thiểu 2 ảnh bằng chứng lỗi sản phẩm.");
+            }
+
+            // Đổi trạng thái đơn hàng sang DISPUTED (đóng băng ký quỹ)
+            order.Status = OrderStatus.Disputed;
+            order.UpdatedAt = DateTime.UtcNow;
+
+            var dispute = new Dispute
+            {
+                OrderId = order.Id,
+                RaisedByUserId = buyerId,
+                Reason = request.Reason.Trim(),
+                EvidenceVideoUrl = request.EvidenceVideoUrl?.Trim(),
+                EvidenceImagesJson = request.EvidenceImages != null && request.EvidenceImages.Count > 0
+                    ? System.Text.Json.JsonSerializer.Serialize(request.EvidenceImages)
+                    : null,
+                Status = DisputeStatus.PendingReview,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _context.Disputes.Add(dispute);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Dispute #{DisputeId} opened by Buyer #{BuyerId} for Order #{OrderId}. Status: {Status}",
+                dispute.Id, buyerId, order.Id, dispute.Status);
+
+            return MapToDisputeResponse(dispute, order.Buyer.FullName);
+        }
+
+        public async Task<DisputeResponse?> GetOrderDisputeAsync(int orderId, int userId)
+        {
+            var order = await _context.Orders
+                .Include(o => o.Buyer)
+                .Include(o => o.Dispute)
+                .FirstOrDefaultAsync(o => o.Id == orderId);
+
+            if (order == null)
+            {
+                throw new KeyNotFoundException($"Không tìm thấy đơn hàng #{orderId}.");
+            }
+
+            if (order.BuyerId != userId && order.SellerId != userId)
+            {
+                var user = await _context.Users.FindAsync(userId);
+                if (user == null || user.Role != "Admin")
+                {
+                    throw new UnauthorizedAccessException("Bạn không có quyền xem khiếu nại của đơn hàng này.");
+                }
+            }
+
+            if (order.Dispute == null)
+            {
+                return null;
+            }
+
+            return MapToDisputeResponse(order.Dispute, order.Buyer.FullName);
+        }
+
+        private static DisputeResponse MapToDisputeResponse(Dispute dispute, string buyerName)
+        {
+            var images = new List<string>();
+            if (!string.IsNullOrWhiteSpace(dispute.EvidenceImagesJson))
+            {
+                try
+                {
+                    images = System.Text.Json.JsonSerializer.Deserialize<List<string>>(dispute.EvidenceImagesJson) ?? new List<string>();
+                }
+                catch { }
+            }
+
+            return new DisputeResponse
+            {
+                Id = dispute.Id,
+                OrderId = dispute.OrderId,
+                RaisedByUserId = dispute.RaisedByUserId,
+                RaisedByUserName = buyerName,
+                Reason = dispute.Reason,
+                EvidenceVideoUrl = dispute.EvidenceVideoUrl,
+                EvidenceImages = images,
+                Status = dispute.Status,
+                AdminVerdict = dispute.AdminVerdict,
+                CreatedAt = dispute.CreatedAt,
+                ResolvedAt = dispute.ResolvedAt
+            };
+        }
+
         private static OrderResponse MapToOrderResponse(Order order, string buyerName, string sellerName)
         {
             return new OrderResponse

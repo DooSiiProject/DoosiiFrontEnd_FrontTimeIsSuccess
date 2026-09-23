@@ -31,6 +31,7 @@ builder.Services.AddScoped<IProductLockService, MockProductLockService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<IWalletService, WalletService>();
+builder.Services.AddScoped<IAdminService, AdminService>();
 
 // Background Workers (Track 2 - Wee)
 builder.Services.AddHostedService<OrderEscrowBackgroundService>();
@@ -113,6 +114,21 @@ using (var scope = app.Services.CreateScope())
         var dbContext = services.GetRequiredService<AppDbContext>();
         dbContext.Database.Migrate();
         Console.WriteLine("--> Database migration applied successfully!");
+
+        // Khởi tạo tài khoản Admin mặc định nếu chưa tồn tại
+        if (!dbContext.Users.Any(u => u.Email == "admin@doosii.com"))
+        {
+            dbContext.Users.Add(new Doosii.DAL.Models.User
+            {
+                Email = "admin@doosii.com",
+                FullName = "Doosii System Administrator",
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword("Password123!"),
+                Role = "Admin",
+                CreatedAt = DateTime.UtcNow
+            });
+            dbContext.SaveChanges();
+            Console.WriteLine("--> Default Admin account seeded: admin@doosii.com / Password123!");
+        }
     }
     catch (Exception ex)
     {
