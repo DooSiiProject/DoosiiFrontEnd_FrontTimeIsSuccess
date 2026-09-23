@@ -28,6 +28,7 @@ builder.Services.AddScoped<IProductService, ProductService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IProductLockService, MockProductLockService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
+builder.Services.AddScoped<IPaymentService, PaymentService>();
 
 // 3. Cấu hình JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");

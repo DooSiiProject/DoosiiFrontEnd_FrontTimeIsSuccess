@@ -60,7 +60,8 @@
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
 | `POST` | `/api/orders/create-escrow` | Customer | Create escrow order, lock item for 15 mins, calculate total amount + 2-3% fee |
-| `POST` | `/api/payments/payos-qr` | Customer | Generate dynamic VietQR code with order ID syntax |
+| `POST` | `/api/payments/payos-qr` | Customer | Generate dynamic VietQR code with order ID syntax (`DOSI <OrderId>`) |
+| `GET` | `/api/payments/order/{orderId}/status` | Authenticated | Check real-time payment and escrow status of an order |
 | `POST` | `/api/payments/webhook` | Webhook (PayOS) | Handle payment confirmation, verify signature, transition order to `ESCROW_HOLDING` |
 | `POST` | `/api/orders/{id}/ship` | Seller | Submit shipping carrier and tracking code (moves to `IN_TRANSIT`) |
 | `POST` | `/api/orders/{id}/confirm-received` | Buyer | Confirm receipt of item, release funds to seller wallet (`COMPLETED_RELEASED`) |

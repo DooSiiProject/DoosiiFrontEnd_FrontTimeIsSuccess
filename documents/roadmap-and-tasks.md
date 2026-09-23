@@ -98,8 +98,8 @@ The backend workload is divided **50 / 50** between **Wee** and **Tri** based on
 - [x] `[Wee]` EF Core Entities: `Order`, `OrderItem`, `EscrowTransaction`, `PaymentLog`, `Dispute`, `WithdrawalRequest` `[Completed]`
 - [x] `[Wee]` Implement `IProductLockService` contract to reserve items during checkout `[Completed]`
 - [x] `[Wee]` Create Escrow Order API (`POST /api/orders/create-escrow`) with 2.5% fee calculation & order tracking (`GET /api/orders/{id}`, `/my-purchases`, `/my-sales`) `[Completed]`
-- [ ] `[Wee]` PayOS / SePay dynamic VietQR code generator (`DOSI <OrderId>`)
-- [ ] `[Wee]` Secure PayOS Webhook endpoint: HMAC signature validation, idempotency, move to `ESCROW_HOLDING`
+- [x] `[Wee]` PayOS / SePay dynamic VietQR code generator (`DOSI <OrderId>`) `[Completed]`
+- [x] `[Wee]` Secure PayOS Webhook endpoint: HMAC signature validation, idempotency, move to `ESCROW_HOLDING` `[Completed]`
 - [ ] `[Wee]` Seller shipping carrier & tracking code update API (move to `IN_TRANSIT`)
 - [ ] `[Wee]` Buyer "Received & Accepted" confirmation API (move to `COMPLETED_RELEASED` + credit seller wallet)
 - [ ] `[Wee]` **.NET `BackgroundService`**:
