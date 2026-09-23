@@ -110,8 +110,8 @@ The backend workload is divided **50 / 50** between **Wee** and **Tri** based on
 
 ### Module 5: Seller Tools, Wallets & Admin Portal [Track 2: Wee]
 *Domain Schema: `order` & `auth` (KYC)*
-- [ ] `[Wee]` Seller wallet balance tracking & transaction ledger API
-- [ ] `[Wee]` Bank withdrawal request API (minimum 50,000 VND)
+- [x] `[Wee]` Seller wallet balance tracking & transaction ledger API `[Completed]`
+- [x] `[Wee]` Bank withdrawal request API (minimum 50,000 VND) `[Completed]`
 - [ ] `[Wee]` Buyer dispute filing API (within 24h of delivery with mandatory unboxing video/photos)
 - [ ] `[Wee]` Admin KYC application review & approval/rejection API
 - [ ] `[Wee]` Admin Dispute Arbitration API (refund buyer vs. release funds to seller)

@@ -79,6 +79,7 @@
 | `POST` | `/api/seller/announcements` | Seller | Purchase a bale-opening broadcast ("khui kiện") and trigger 5km radius notifications |
 | `GET` | `/api/seller/wallet` | Seller/Customer | Check available balance, escrow-locked balance, and transaction history |
 | `POST` | `/api/seller/wallet/withdraw` | Seller/Customer | Request withdrawal to personal bank account (minimum 50,000 VND) |
+| `GET` | `/api/seller/wallet/withdrawals` | Seller/Customer | View history of personal bank withdrawal requests |
 
 ---
 

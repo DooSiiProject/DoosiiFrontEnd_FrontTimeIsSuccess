@@ -30,6 +30,7 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IProductLockService, MockProductLockService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
+builder.Services.AddScoped<IWalletService, WalletService>();
 
 // Background Workers (Track 2 - Wee)
 builder.Services.AddHostedService<OrderEscrowBackgroundService>();
