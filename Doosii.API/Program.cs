@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Doosii.API.BackgroundServices;
 using Doosii.BLL.Interfaces;
 using Doosii.BLL.Services;
 using Doosii.DAL.Data;
@@ -29,6 +30,9 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IProductLockService, MockProductLockService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
+
+// Background Workers (Track 2 - Wee)
+builder.Services.AddHostedService<OrderEscrowBackgroundService>();
 
 // 3. Cấu hình JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");

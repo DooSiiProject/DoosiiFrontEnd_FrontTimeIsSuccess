@@ -136,5 +136,75 @@ namespace Doosii.API.Controllers
                 return StatusCode(500, ApiResponse<List<OrderResponse>>.ErrorResponse("Đã xảy ra lỗi máy chủ nội bộ.", new List<string> { ex.Message }));
             }
         }
+
+        /// <summary>
+        /// Cập nhật thông tin giao hàng & mã vận đơn (Dành cho Người bán, chuyển sang IN_TRANSIT)
+        /// </summary>
+        [HttpPost("{id:int}/ship")]
+        public async Task<IActionResult> ShipOrder(int id, [FromBody] ShipOrderRequest request)
+        {
+            var sellerId = GetCurrentUserId();
+            if (sellerId == null)
+            {
+                return Unauthorized(ApiResponse<OrderResponse>.ErrorResponse("Token không hợp lệ hoặc thiếu thông tin định danh người dùng."));
+            }
+
+            try
+            {
+                var result = await _orderService.ShipOrderAsync(id, sellerId.Value, request);
+                return Ok(ApiResponse<OrderResponse>.SuccessResponse(result, "Cập nhật gửi hàng thành công. Đơn hàng hiện đang được vận chuyển."));
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(ApiResponse<OrderResponse>.ErrorResponse(ex.Message));
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(403, ApiResponse<OrderResponse>.ErrorResponse(ex.Message));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ApiResponse<OrderResponse>.ErrorResponse(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, ApiResponse<OrderResponse>.ErrorResponse("Đã xảy ra lỗi máy chủ nội bộ.", new List<string> { ex.Message }));
+            }
+        }
+
+        /// <summary>
+        /// Người mua xác nhận đã nhận hàng & hài lòng (Chuyển sang COMPLETED_RELEASED và giải ngân ký quỹ)
+        /// </summary>
+        [HttpPost("{id:int}/confirm-received")]
+        public async Task<IActionResult> ConfirmOrderReceived(int id)
+        {
+            var buyerId = GetCurrentUserId();
+            if (buyerId == null)
+            {
+                return Unauthorized(ApiResponse<OrderResponse>.ErrorResponse("Token không hợp lệ hoặc thiếu thông tin định danh người dùng."));
+            }
+
+            try
+            {
+                var result = await _orderService.ConfirmOrderReceivedAsync(id, buyerId.Value);
+                return Ok(ApiResponse<OrderResponse>.SuccessResponse(result, "Xác nhận nhận hàng thành công. Tiền ký quỹ đã được giải ngân cho người bán."));
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(ApiResponse<OrderResponse>.ErrorResponse(ex.Message));
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(403, ApiResponse<OrderResponse>.ErrorResponse(ex.Message));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ApiResponse<OrderResponse>.ErrorResponse(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, ApiResponse<OrderResponse>.ErrorResponse("Đã xảy ra lỗi máy chủ nội bộ.", new List<string> { ex.Message }));
+            }
+        }
     }
 }

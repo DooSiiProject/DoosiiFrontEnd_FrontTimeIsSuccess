@@ -100,9 +100,9 @@ The backend workload is divided **50 / 50** between **Wee** and **Tri** based on
 - [x] `[Wee]` Create Escrow Order API (`POST /api/orders/create-escrow`) with 2.5% fee calculation & order tracking (`GET /api/orders/{id}`, `/my-purchases`, `/my-sales`) `[Completed]`
 - [x] `[Wee]` PayOS / SePay dynamic VietQR code generator (`DOSI <OrderId>`) `[Completed]`
 - [x] `[Wee]` Secure PayOS Webhook endpoint: HMAC signature validation, idempotency, move to `ESCROW_HOLDING` `[Completed]`
-- [ ] `[Wee]` Seller shipping carrier & tracking code update API (move to `IN_TRANSIT`)
-- [ ] `[Wee]` Buyer "Received & Accepted" confirmation API (move to `COMPLETED_RELEASED` + credit seller wallet)
-- [ ] `[Wee]` **.NET `BackgroundService`**:
+- [x] `[Wee]` Seller shipping carrier & tracking code update API (move to `IN_TRANSIT`) `[Completed]`
+- [x] `[Wee]` Buyer "Received & Accepted" confirmation API (move to `COMPLETED_RELEASED` + credit seller wallet) `[Completed]`
+- [x] `[Wee]` **.NET `BackgroundService`**: `[Completed]`
   - Auto-cancel unpaid orders after 15 minutes (unlock product)
   - Auto-complete orders after 72 hours in `IN_TRANSIT` if no dispute is opened
 

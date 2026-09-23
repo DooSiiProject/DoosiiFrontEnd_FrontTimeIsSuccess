@@ -11,10 +11,12 @@ src/
 │   ├── code-standards.md          # Git workflow, C# / React conventions, response wrapper
 │   └── codebase-summary.md        # Directory map & setup guide (this file)
 │
-├── Doosii.API/                    # Web API Host (Controllers, Swagger, Middleware)
+├── Doosii.API/                    # Web API Host (Controllers, Swagger, Middleware, BackgroundServices)
+│   ├── BackgroundServices/
+│   │   └── OrderEscrowBackgroundService.cs # Periodic background worker (auto-cancel 15m, auto-complete 72h)
 │   ├── Controllers/
 │   │   ├── AuthController.cs      # Endpoints: /register, /login, /google, /refresh, /forgot-password, /verify-otp, /reset-password, /me
-│   │   ├── OrdersController.cs    # Endpoints: /create-escrow, /{id}, /my-purchases, /my-sales
+│   │   ├── OrdersController.cs    # Endpoints: /create-escrow, /{id}, /my-purchases, /my-sales, /{id}/ship, /{id}/confirm-received
 │   │   ├── PaymentsController.cs  # Endpoints: /payos-qr, /order/{id}/status, /webhook
 │   │   ├── UsersController.cs     # Endpoints: /profile, /seller-application, /seller-application/status
 │   │   ├── StoresController.cs    # Endpoints: /stores, /{storeId}, /{storeId}/products
