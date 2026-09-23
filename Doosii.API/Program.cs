@@ -12,11 +12,20 @@ var builder = WebApplication.CreateBuilder(args);
 // 1. Cấu hình EF Core với SQL Server
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(connectionString));
+{
+    options.UseSqlServer(connectionString);
+    options.ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+});
 
 // 2. Đăng ký Dependency Injection cho Services
-builder.Services.AddScoped<IEmailService, EmailService>();
+// Services từ Track 1 (Trí)
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IStoreService, StoreService>();
+builder.Services.AddScoped<IProductService, ProductService>();
+
+// Services từ Track 2 (Wee)
+builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IProductLockService, MockProductLockService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
 
@@ -56,9 +65,9 @@ builder.Services.AddSwaggerGen(options =>
 {
     options.SwaggerDoc("v1", new OpenApiInfo
     {
-        Title = "Doosii Auth API",
+        Title = "Doosii API",
         Version = "v1",
-        Description = "Web API Authentication cho sàn buôn bán đồ si Doosii"
+        Description = "Web API cho sàn buôn bán đồ si Doosii"
     });
 
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme

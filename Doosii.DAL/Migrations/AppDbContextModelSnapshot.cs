@@ -58,7 +58,7 @@ namespace Doosii.DAL.Migrations
 
                     b.HasIndex("Email", "OtpCode", "Purpose");
 
-                    b.ToTable("EmailOtps");
+                    b.ToTable("EmailOtps", (string)null);
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Order.Dispute", b =>
@@ -109,7 +109,7 @@ namespace Doosii.DAL.Migrations
 
                     b.HasIndex("RaisedByUserId");
 
-                    b.ToTable("Disputes");
+                    b.ToTable("Disputes", (string)null);
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Order.EscrowTransaction", b =>
@@ -141,7 +141,7 @@ namespace Doosii.DAL.Migrations
 
                     b.HasIndex("OrderId");
 
-                    b.ToTable("EscrowTransactions");
+                    b.ToTable("EscrowTransactions", (string)null);
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Order.Order", b =>
@@ -227,7 +227,7 @@ namespace Doosii.DAL.Migrations
 
                     b.HasIndex("Status");
 
-                    b.ToTable("Orders");
+                    b.ToTable("Orders", (string)null);
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Order.OrderItem", b =>
@@ -260,7 +260,7 @@ namespace Doosii.DAL.Migrations
 
                     b.HasIndex("OrderId");
 
-                    b.ToTable("OrderItems");
+                    b.ToTable("OrderItems", (string)null);
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Order.PaymentLog", b =>
@@ -299,7 +299,7 @@ namespace Doosii.DAL.Migrations
 
                     b.HasIndex("TransactionCode");
 
-                    b.ToTable("PaymentLogs");
+                    b.ToTable("PaymentLogs", (string)null);
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Order.WithdrawalRequest", b =>
@@ -352,7 +352,7 @@ namespace Doosii.DAL.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("WithdrawalRequests");
+                    b.ToTable("WithdrawalRequests", (string)null);
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.RefreshToken", b =>
@@ -387,7 +387,7 @@ namespace Doosii.DAL.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("RefreshTokens");
+                    b.ToTable("RefreshTokens", (string)null);
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.User", b =>
@@ -431,7 +431,7 @@ namespace Doosii.DAL.Migrations
                     b.HasIndex("Email")
                         .IsUnique();
 
-                    b.ToTable("Users");
+                    b.ToTable("Users", (string)null);
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Order.Dispute", b =>
