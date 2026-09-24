@@ -65,3 +65,6 @@ Desktop.ini
 appsettings.Production.json
 secrets.json
 .env
+
+## Scratch scripts
+scratch/
