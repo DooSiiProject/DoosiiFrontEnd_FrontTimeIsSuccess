@@ -45,10 +45,10 @@ The backend workload is divided **50 / 50** between **Wee** and **Tri** based on
 
 | Phase | Duration | Focus Area | Status |
 |---|---|---|---|
-| **Phase 1** | Weeks 1–2 | Requirements, Documentation, Architecture & Figma UI | 🟡 In Progress |
-| **Phase 2** | Weeks 3–6 | Core Backend (Auth, Schemas, Thrift Map & Store Inventory) | ⚪ Upcoming |
-| **Phase 3** | Weeks 7–10 | Escrow Order Processing, PayOS, React Frontend, SignalR | ⚪ Upcoming |
-| **Phase 4** | Weeks 11–12 | Dispute Workflows, Functional & Security Testing | ⚪ Upcoming |
+| **Phase 1** | Weeks 1–2 | Requirements, Documentation, Architecture & Schemas | 🟢 Completed |
+| **Phase 2** | Weeks 3–6 | Core Backend (Auth, Thrift Map, Store & Inventory) | 🟡 In Progress (Track 1 Tri remaining: Forum & Cloudinary) |
+| **Phase 3** | Weeks 7–10 | Escrow Order Processing, PayOS, SignalR Notification Hub | 🟢 Backend Completed (Track 2 Wee) |
+| **Phase 4** | Weeks 11–12 | Dispute Workflows, Admin Arbitration & Wallet Payouts | 🟢 Backend Completed (Track 2 Wee) |
 | **Phase 5** | Week 13+ | Pilot Launch (Ho Chi Minh City) & Maintenance | ⚪ Upcoming |
 
 ---
