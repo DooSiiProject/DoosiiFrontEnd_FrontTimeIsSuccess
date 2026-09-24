@@ -23,28 +23,33 @@ src/
 │   │   ├── ProductsController.cs  # Endpoints: /{productId} (PUT, DELETE)
 │   │   ├── MapController.cs       # Endpoints: /nearby-stores (Haversine spatial calculation)
 │   │   ├── SellerWalletController.cs # Endpoints: /seller/wallet, /seller/wallet/withdraw, /seller/wallet/withdrawals
+│   │   ├── AnnouncementsController.cs # Endpoints: /seller/announcements, /announcements/upcoming
+│   │   ├── NotificationsController.cs # Endpoints: /notifications, /unread-count, /{id}/read, /read-all
 │   │   └── AdminController.cs     # Endpoints: /admin/kyc-requests, /admin/disputes, /admin/withdrawals, /admin/analytics
 │   ├── Properties/
 │   │   └── launchSettings.json    # http: 5241, https: 7117
 │   ├── appsettings.json           # Connection string, JWT secret, Google ClientId, PayOS config
-│   └── Program.cs                 # DI configuration, EF migration, pipeline setup
+│   └── Program.cs                 # DI configuration, EF migration, SignalR Hub mapping, pipeline setup
 │
 ├── Doosii.BLL/                    # Business Logic Layer
 │   ├── Common/
 │   │   └── ApiResponse.cs         # Unified API response wrapper { success, message, data, errors }
-│   ├── DTOs/                      # Data Transfer Objects (Auth, Orders, Payments, Stores, Products, Users, KYC, Map, Wallet, Disputes, Admin)
+│   ├── DTOs/                      # Data Transfer Objects (Auth, Orders, Payments, Stores, Products, Users, KYC, Map, Wallet, Disputes, Admin, Notifications, Announcements)
 │   ├── Helpers/
 │   │   └── GeoCalculator.cs       # Haversine distance calculator for Thrift Map radius
-│   ├── Interfaces/                # Contracts (IAuthService, IEmailService, IProductLockService, IOrderService, IPaymentService, IWalletService, IAdminService, IUserService, IStoreService, IProductService)
-│   └── Services/                  # Implementations (AuthService, EmailService, MockProductLockService, OrderService, PaymentService, WalletService, AdminService, UserService, StoreService, ProductService)
+│   ├── Hubs/
+│   │   └── NotificationHub.cs     # SignalR Real-time Hub (/hubs/notifications) for push alerts & broadcasts
+│   ├── Interfaces/                # Contracts (IAuthService, IEmailService, IProductLockService, IOrderService, IPaymentService, IWalletService, IAdminService, IUserService, IStoreService, IProductService, INotificationService, IAnnouncementService)
+│   └── Services/                  # Implementations (AuthService, EmailService, MockProductLockService, OrderService, PaymentService, WalletService, AdminService, UserService, StoreService, ProductService, NotificationService, AnnouncementService)
 │
 └── Doosii.DAL/                    # Data Access Layer
     ├── Data/
-    │   └── AppDbContext.cs        # EF Core DbContext with auth, store, and order schemas
-    ├── Migrations/                # EF Core Code-First migration history (Auth, Store, Escrow)
+    │   └── AppDbContext.cs        # EF Core DbContext with auth, store, order, and notification schemas
+    ├── Migrations/                # EF Core Code-First migration history (Auth, Store, Escrow, Notification)
     └── Models/                    # Database entity models
         ├── User.cs, RefreshToken.cs, EmailOtp.cs, MerchantProfile.cs
-        ├── Store/ (Store.cs, Category.cs, Product.cs, ProductImage.cs, StoreLocation.cs)
+        ├── Store/ (Store.cs, Category.cs, Product.cs, ProductImage.cs, StoreLocation.cs, BaleAnnouncement.cs)
+        ├── Notification/ (Notification.cs)
         └── Order/ (Order.cs, OrderItem.cs, EscrowTransaction.cs, PaymentLog.cs, Dispute.cs, WithdrawalRequest.cs)
 ```
 

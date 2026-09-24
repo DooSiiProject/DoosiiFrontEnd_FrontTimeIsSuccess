@@ -116,5 +116,5 @@ The backend workload is divided **50 / 50** between **Wee** and **Tri** based on
 - [x] `[Wee]` Admin KYC application review & approval/rejection API `[Completed]`
 - [x] `[Wee]` Admin Dispute Arbitration API (refund buyer vs. release funds to seller) `[Completed]`
 - [x] `[Wee]` Financial analytics API (GMV, escrow fee platform revenue, withdrawal logs) `[Completed]`
-- [ ] `[Wee]` Bale-opening announcement purchase & payment flow
-- [ ] `[Wee]` SignalR Notification Hub (`/hubs/notifications`) for order state changes & wallet alerts
+- [x] `[Wee]` Bale-opening announcement purchase & payment flow (max 2/day/store, 50,000 VND fee via wallet/PayOS, public upcoming events API) `[Completed]`
+- [x] `[Wee]` SignalR Notification Hub (`/hubs/notifications`) for real-time order state changes, wallet alerts, bale-opening broadcasts, and persistent in-app notifications `[Completed]`

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Doosii.DAL.Models;
+using Doosii.DAL.Models.Notification;
 using Doosii.DAL.Models.Order;
 using Doosii.DAL.Models.Store;
 
@@ -22,6 +23,7 @@ namespace Doosii.DAL.Data
         public DbSet<Category> Categories { get; set; }
         public DbSet<Product> Products { get; set; }
         public DbSet<ProductImage> ProductImages { get; set; }
+        public DbSet<BaleAnnouncement> BaleAnnouncements { get; set; }
 
         // Order & Escrow Module (Track 2 - Wee)
         public DbSet<Order> Orders { get; set; }
@@ -30,6 +32,9 @@ namespace Doosii.DAL.Data
         public DbSet<PaymentLog> PaymentLogs { get; set; }
         public DbSet<Dispute> Disputes { get; set; }
         public DbSet<WithdrawalRequest> WithdrawalRequests { get; set; }
+
+        // Notification Module (Track 2 - Wee)
+        public DbSet<Notification> Notifications { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -181,6 +186,40 @@ namespace Doosii.DAL.Data
                       .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasIndex(wr => wr.Status);
+            });
+
+            // Notification schema
+            modelBuilder.Entity<Notification>(entity =>
+            {
+                entity.ToTable("Notifications", "notification");
+
+                entity.HasOne(n => n.User)
+                      .WithMany()
+                      .HasForeignKey(n => n.UserId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(n => n.UserId);
+                entity.HasIndex(n => n.CreatedAt);
+            });
+
+            // Store schema - BaleAnnouncement
+            modelBuilder.Entity<BaleAnnouncement>(entity =>
+            {
+                entity.ToTable("BaleAnnouncements", "store");
+
+                entity.HasOne(b => b.Store)
+                      .WithMany()
+                      .HasForeignKey(b => b.StoreId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(b => b.Seller)
+                      .WithMany()
+                      .HasForeignKey(b => b.SellerId)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(b => b.StoreId);
+                entity.HasIndex(b => b.Status);
+                entity.HasIndex(b => b.EventTime);
             });
         }
     }

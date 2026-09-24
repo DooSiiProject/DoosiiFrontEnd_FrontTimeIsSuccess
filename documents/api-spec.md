@@ -77,7 +77,9 @@
 |---|---|---|---|
 | `GET` | `/api/seller/inventory` | Seller | Manage listed items (CRUD, status: `AVAILABLE`, `LOCKED`, `SOLD`) |
 | `POST` | `/api/seller/products` | Seller | Add new store clothing item with images, size, and condition |
-| `POST` | `/api/seller/announcements` | Seller | Purchase a bale-opening broadcast ("khui kiện") and trigger 5km radius notifications |
+| `POST` | `/api/seller/announcements` | Seller | Purchase a bale-opening broadcast ("khui kiện") (max 2/day, 50k VND fee via WALLET or PayOS) |
+| `GET` | `/api/seller/announcements` | Seller | View all bale-opening announcements created for the seller's store |
+| `GET` | `/api/announcements/upcoming` | Public | View active upcoming bale-opening announcements across all stores |
 | `GET` | `/api/seller/wallet` | Seller/Customer | Check available balance, escrow-locked balance, and transaction history |
 | `POST` | `/api/seller/wallet/withdraw` | Seller/Customer | Request withdrawal to personal bank account (minimum 50,000 VND) |
 | `GET` | `/api/seller/wallet/withdrawals` | Seller/Customer | View history of personal bank withdrawal requests |
@@ -98,8 +100,24 @@
 
 ---
 
-### 2.7. Real-time Communication (SignalR Hubs)
+### 2.7. In-App Notifications (`/api/notifications`)
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| `GET` | `/api/notifications` | Authenticated | List current user notifications (supports `unreadOnly=true/false` filter, newest 50) |
+| `GET` | `/api/notifications/unread-count` | Authenticated | Get total count of unread notifications for badge indicator |
+| `PUT` | `/api/notifications/{id}/read` | Authenticated | Mark a single notification as read |
+| `PUT` | `/api/notifications/read-all` | Authenticated | Mark all notifications of the current user as read |
+
+---
+
+### 2.8. Real-time Communication (SignalR Hubs)
 - **Chat Hub**: `/hubs/chat`
   - Real-time 1-on-1 messaging between buyer and seller with attached product card.
 - **Notification Hub**: `/hubs/notifications`
-  - Push notifications for order state changes, comments, reactions, and nearby bale-opening alerts.
+  - Authentication: JWT query string parameter `?access_token={jwt}` (for WebSocket connections).
+  - Groups:
+    - Personal Group: `user_{userId}` for targeted order updates, wallet credits, and dispute alerts.
+    - Broadcast Channel: `broadcast_channel` for platform announcements and nearby bale-opening broadcasts.
+  - Client Listeners:
+    - `ReceiveNotification(NotificationDto)`: Real-time event for personal notification.
+    - `ReceiveBroadcast(BroadcastPayload)`: Real-time event for broadcast announcement.

@@ -4,6 +4,7 @@ using Doosii.BLL.DTOs;
 using Doosii.BLL.Interfaces;
 using Doosii.DAL.Data;
 using Doosii.DAL.Models.Order;
+using Doosii.DAL.Models.Store;
 
 namespace Doosii.BLL.Services
 {
@@ -97,8 +98,29 @@ namespace Doosii.BLL.Services
                 });
             }
 
-            // Số dư khả dụng = Tổng tiền đã giải ngân - (Đã duyệt rút + Đang chờ duyệt rút)
-            var availableBalance = totalReleasedRevenue - (approvedWithdrawalAmount + pendingWithdrawalAmount);
+            // Tính tiền phí phát sóng thông báo khui kiện đã trừ qua ví
+            var paidAnnouncements = await _context.BaleAnnouncements
+                .Where(b => b.SellerId == userId && b.PaymentMethod == "WALLET" && b.Status == AnnouncementStatus.PaidActive)
+                .ToListAsync();
+
+            decimal totalAnnouncementFees = 0;
+            foreach (var b in paidAnnouncements)
+            {
+                totalAnnouncementFees += b.BroadcastFee;
+                transactions.Add(new WalletTransactionDto
+                {
+                    Id = $"ANN-{b.Id}",
+                    Type = "ANNOUNCEMENT_FEE",
+                    Amount = -b.BroadcastFee,
+                    Description = $"Phí phát sóng thông báo khui kiện: {b.Title}",
+                    Status = "COMPLETED",
+                    ReferenceId = b.Id.ToString(),
+                    CreatedAt = b.CreatedAt
+                });
+            }
+
+            // Số dư khả dụng = Tổng tiền đã giải ngân - (Đã duyệt rút + Đang chờ duyệt rút + Phí thông báo)
+            var availableBalance = totalReleasedRevenue - (approvedWithdrawalAmount + pendingWithdrawalAmount + totalAnnouncementFees);
             if (availableBalance < 0) availableBalance = 0;
 
             return new WalletResponse

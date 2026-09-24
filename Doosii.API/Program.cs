@@ -32,6 +32,11 @@ builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<IWalletService, WalletService>();
 builder.Services.AddScoped<IAdminService, AdminService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<IAnnouncementService, AnnouncementService>();
+
+// SignalR Real-time Services (Track 2 - Wee)
+builder.Services.AddSignalR();
 
 // Background Workers (Track 2 - Wee)
 builder.Services.AddHostedService<OrderEscrowBackgroundService>();
@@ -60,6 +65,21 @@ builder.Services.AddAuthentication(options =>
         ValidAudience = jwtSettings["Audience"],
         ValidateLifetime = true,
         ClockSkew = TimeSpan.Zero
+    };
+
+    // Hỗ trợ truyền JWT Token qua Query string cho WebSockets SignalR
+    options.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            var accessToken = context.Request.Query["access_token"];
+            var path = context.HttpContext.Request.Path;
+            if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+            {
+                context.Token = accessToken;
+            }
+            return Task.CompletedTask;
+        }
     };
 });
 
@@ -149,5 +169,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<Doosii.BLL.Hubs.NotificationHub>("/hubs/notifications");
 
 app.Run();
