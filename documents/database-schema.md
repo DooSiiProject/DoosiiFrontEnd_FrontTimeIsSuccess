@@ -35,11 +35,17 @@ erDiagram
     auth_MerchantProfiles {
         int Id PK
         int UserId FK
+        string ContactName
+        string ContactEmail
         string StoreName
         string Phone
         string Address
+        string AddressType "OLD | NEW"
         decimal Latitude
         decimal Longitude
+        datetime EstablishedDate
+        string TaxCode
+        string ShopMediaUrls
         string KycStatus "PENDING | APPROVED | REJECTED"
         string LicenseImageUrl
         string FrontFacadeUrl
@@ -47,6 +53,7 @@ erDiagram
         string IdCardBackUrl
         string RejectionReason
         datetime CreatedAt
+        datetime UpdatedAt
     }
 
     auth_RefreshTokens {
@@ -71,6 +78,21 @@ erDiagram
     %% STORE SCHEMA
     store_Stores ||--o{ store_Products : "stocks"
     store_Stores ||--o{ store_StoreReviews : "receives"
+    store_Stores ||--o{ store_BaleAnnouncements : "sponsors"
+
+    store_BaleAnnouncements {
+        int Id PK
+        int StoreId FK
+        int SellerId FK
+        string Title
+        string BannerUrl
+        datetime EventTime
+        string Description
+        decimal BroadcastFee
+        string PaymentMethod "WALLET | PAYOS"
+        string Status "PENDING_PAYMENT | PAID_ACTIVE | EXPIRED | CANCELLED"
+        datetime CreatedAt
+    }
 
     store_Stores {
         int Id PK
@@ -276,6 +298,7 @@ erDiagram
 ## 3. Key Enums & Constraints
 - **`Role`**: `Customer` (default), `Seller`, `Admin`.
 - **`KycStatus`**: `PENDING`, `APPROVED`, `REJECTED`.
+- **`AddressType`**: `OLD` (dùng lại địa chỉ giao hàng của tài khoản), `NEW` (nhập địa chỉ cửa hàng mới).
 - **`ProductStatus`**:
   - `AVAILABLE`: Publicly visible and purchasable.
   - `LOCKED`: Reserved for an order in `PENDING_PAYMENT` (15 min timer) or active escrow.
@@ -283,8 +306,12 @@ erDiagram
 - **`OrderStatus`**:
   - `PENDING_PAYMENT` $\rightarrow$ `ESCROW_HOLDING` $\rightarrow$ `IN_TRANSIT` $\rightarrow$ `COMPLETED_RELEASED`
   - Fallbacks: `CANCELLED` (unpaid after 15m), `DISPUTED` (buyer files complaint), `REFUNDED` (buyer return approved).
+- **`AnnouncementStatus`**: `PENDING_PAYMENT`, `PAID_ACTIVE`, `EXPIRED`, `CANCELLED`.
+- **`WithdrawalStatus`**: `PENDING`, `APPROVED`, `REJECTED`.
+- **`DisputeStatus`**: `PENDING_REVIEW` (hoặc `OPEN`), `REFUNDED_BUYER`, `RELEASED_SELLER`.
 - **Unique Indexes**:
   - `IX_Users_Email` (`auth.Users.Email`)
+  - `IX_MerchantProfiles_UserId` (`auth.MerchantProfiles.UserId`)
   - `IX_RefreshTokens_Token` (`auth.RefreshTokens.Token`)
   - `IX_EmailOtps_Email_OtpCode_Purpose` (`auth.EmailOtps.[Email, OtpCode, Purpose]`)
   - `IX_Categories_Slug` (`store.Categories.Slug`)

@@ -1,4 +1,4 @@
-﻿# Doosii - Feature Specifications & Business Rules
+# Doosii - Feature Specifications & Business Rules
 
 This document details all 20 system features, their functional requirements, and governing business rules.
 
@@ -28,12 +28,15 @@ This document details all 20 system features, their functional requirements, and
 ### REQ-03: Store Onboarding (Đăng ký Cửa hàng & KYC)
 - **Actors**: Customer, Admin
 - **Requirements**:
-  - Customer submits store application: Store Name, Phone, Full Address, GPS Coordinates (`Latitude`, `Longitude`), Opening/Closing Hours, Facade Photo (min 1), Business License photo, ID Card photos (front & back).
+  - Customer submits store application: Store Name, Contact Name (custom), Contact Email (custom), Phone, Full Address, Address Type (`OLD` using delivery address or `NEW` custom address), GPS Coordinates (`Latitude`, `Longitude`), Established Date, Tax Code, Shop Media URLs (multiple photos & videos), Business License photo, ID Card photos (front & back).
   - Application stored with status `PENDING`.
+  - User can view their submitted application (`GET /api/users/seller-application/me`), edit while pending or resubmit when rejected (`PUT /api/users/seller-application/me`), and cancel application (`DELETE /api/users/seller-application/me`).
+  - Admin reviews via dedicated endpoints (`GET /api/admin/kyc-requests`, `GET /pending`, `GET /{id}`).
   - Admin approves $\rightarrow$ User upgraded to `Seller`, shop pin appears on Thrift Map.
   - Admin rejects $\rightarrow$ Reason provided, notification sent to user for resubmission.
 - **Business Rules**:
-  - Each `Customer` can have at most 1 pending store application at any given time.
+  - Each `Customer` can have at most 1 active pending store application at any given time.
+  - If rejected, user can update the existing application with corrected proof and resubmit, which resets status to `PENDING` and clears previous rejection reasons.
   - Only verified `Seller` (`KYC_APPROVED`) accounts can list store products and appear on Thrift Map.
 
 ---
