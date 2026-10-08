@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Doosii.BLL.DTOs;
 using Doosii.BLL.Interfaces;
 using Doosii.DAL.Data;
+using Doosii.DAL.Models;
 using Doosii.DAL.Models.Order;
 
 namespace Doosii.BLL.Services
@@ -37,24 +38,21 @@ namespace Doosii.BLL.Services
 
             var list = await query.OrderByDescending(m => m.CreatedAt).ToListAsync();
 
-            return list.Select(m => new MerchantProfileDto
+            return list.Select(MapToMerchantProfileDto).ToList();
+        }
+
+        public async Task<MerchantProfileDto> GetKycRequestByIdAsync(int profileId)
+        {
+            var profile = await _context.MerchantProfiles
+                .Include(m => m.User)
+                .FirstOrDefaultAsync(m => m.Id == profileId);
+
+            if (profile == null)
             {
-                Id = m.Id,
-                UserId = m.UserId,
-                StoreName = m.StoreName,
-                Phone = m.Phone,
-                Address = m.Address,
-                Latitude = m.Latitude,
-                Longitude = m.Longitude,
-                KycStatus = m.KycStatus,
-                LicenseImageUrl = m.LicenseImageUrl,
-                FrontFacadeUrl = m.FrontFacadeUrl,
-                IdCardFrontUrl = m.IdCardFrontUrl,
-                IdCardBackUrl = m.IdCardBackUrl,
-                RejectionReason = m.RejectionReason,
-                CreatedAt = m.CreatedAt,
-                UpdatedAt = m.UpdatedAt
-            }).ToList();
+                throw new KeyNotFoundException($"Không tìm thấy hồ sơ đăng ký KYC #{profileId}.");
+            }
+
+            return MapToMerchantProfileDto(profile);
         }
 
         public async Task<MerchantProfileDto> ReviewKycRequestAsync(int profileId, ReviewKycRequest request)
@@ -86,23 +84,65 @@ namespace Doosii.BLL.Services
             _logger.LogInformation("Admin reviewed KYC #{ProfileId} (User #{UserId}): Status = {Status}",
                 profile.Id, profile.UserId, profile.KycStatus);
 
+            return MapToMerchantProfileDto(profile);
+        }
+
+        public async Task<MerchantProfileDto> ApproveKycRequestAsync(int profileId)
+        {
+            return await ReviewKycRequestAsync(profileId, new ReviewKycRequest { IsApproved = true });
+        }
+
+        public async Task<MerchantProfileDto> RejectKycRequestAsync(int profileId, string? reason)
+        {
+            return await ReviewKycRequestAsync(profileId, new ReviewKycRequest
+            {
+                IsApproved = false,
+                RejectionReason = reason
+            });
+        }
+
+        private static MerchantProfileDto MapToMerchantProfileDto(MerchantProfile m)
+        {
+            List<string> mediaUrls = new List<string>();
+            if (!string.IsNullOrWhiteSpace(m.ShopMediaUrls))
+            {
+                try
+                {
+                    mediaUrls = JsonSerializer.Deserialize<List<string>>(m.ShopMediaUrls) ?? new List<string>();
+                }
+                catch
+                {
+                    mediaUrls = new List<string>();
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(m.FrontFacadeUrl))
+            {
+                mediaUrls.Add(m.FrontFacadeUrl);
+            }
+
             return new MerchantProfileDto
             {
-                Id = profile.Id,
-                UserId = profile.UserId,
-                StoreName = profile.StoreName,
-                Phone = profile.Phone,
-                Address = profile.Address,
-                Latitude = profile.Latitude,
-                Longitude = profile.Longitude,
-                KycStatus = profile.KycStatus,
-                LicenseImageUrl = profile.LicenseImageUrl,
-                FrontFacadeUrl = profile.FrontFacadeUrl,
-                IdCardFrontUrl = profile.IdCardFrontUrl,
-                IdCardBackUrl = profile.IdCardBackUrl,
-                RejectionReason = profile.RejectionReason,
-                CreatedAt = profile.CreatedAt,
-                UpdatedAt = profile.UpdatedAt
+                Id = m.Id,
+                UserId = m.UserId,
+                ContactName = m.ContactName ?? m.User?.FullName,
+                ContactEmail = m.ContactEmail ?? m.User?.Email,
+                StoreName = m.StoreName,
+                Phone = m.Phone,
+                Address = m.Address,
+                AddressType = m.AddressType ?? "NEW",
+                Latitude = m.Latitude,
+                Longitude = m.Longitude,
+                EstablishedDate = m.EstablishedDate,
+                TaxCode = m.TaxCode,
+                ShopMediaUrls = mediaUrls,
+                KycStatus = m.KycStatus,
+                LicenseImageUrl = m.LicenseImageUrl,
+                FrontFacadeUrl = m.FrontFacadeUrl,
+                IdCardFrontUrl = m.IdCardFrontUrl,
+                IdCardBackUrl = m.IdCardBackUrl,
+                RejectionReason = m.RejectionReason,
+                CreatedAt = m.CreatedAt,
+                UpdatedAt = m.UpdatedAt
             };
         }
 

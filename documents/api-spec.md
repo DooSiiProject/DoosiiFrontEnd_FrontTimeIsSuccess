@@ -22,8 +22,10 @@
 | `POST` | `/api/auth/reset-password` | Public | Reset password using verified OTP |
 | `GET` | `/api/auth/me` | Authenticated | Retrieve authenticated user's profile |
 | `PUT` | `/api/users/profile` | Authenticated | Update full name, avatar URL (Cloudinary), delivery address |
-| `POST` | `/api/users/seller-application` | Customer | Submit store KYC application (store name, phone, address, coordinates, facade photo, ID card) |
-| `GET` | `/api/users/seller-application/status` | Customer | Check status of submitted KYC store application (`PENDING`, `APPROVED`, `REJECTED`) |
+| `POST` | `/api/users/seller-application` | Customer | Submit store application (name, contact name, email, phone, address, addressType [OLD/NEW], coordinates, establishedDate, taxCode, shopMediaUrls, ID card front/back) |
+| `GET` | `/api/users/seller-application/me` | Customer | Retrieve submitted store application of the current authenticated user |
+| `PUT` | `/api/users/seller-application/me` | Customer | Edit / resubmit store application when status is `PENDING` or `REJECTED` |
+| `DELETE` | `/api/users/seller-application/me` | Customer | Cancel / remove submitted store application while in `PENDING` status |
 
 ---
 
@@ -89,8 +91,12 @@
 ### 2.6. Admin Portal (`/api/admin`)
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
-| `GET` | `/api/admin/kyc-requests` | Admin | Review pending store applications |
-| `POST` | `/api/admin/kyc-requests/{id}/verdict` | Admin | Approve or reject store with explanation |
+| `GET` | `/api/admin/kyc-requests` | Admin | Review store applications (supports query `status=PENDING/APPROVED/REJECTED`) |
+| `GET` | `/api/admin/kyc-requests/pending` | Admin | Quick query for pending store applications awaiting review |
+| `GET` | `/api/admin/kyc-requests/{id}` | Admin | View complete details of a store application |
+| `PUT` | `/api/admin/kyc-requests/{id}/approve` | Admin | Approve store application, automatically promoting user to `Seller` |
+| `PUT` | `/api/admin/kyc-requests/{id}/reject` | Admin | Reject store application with specified reason |
+| `POST` | `/api/admin/kyc-requests/{id}/verdict` | Admin | Approve or reject store with explanation (legacy/backward compatibility) |
 | `GET` | `/api/admin/disputes` | Admin | Review disputed escrow orders with unboxing proof |
 | `POST` | `/api/admin/disputes/{id}/arbitrate` | Admin | Rule in favor of Buyer (refund) or Seller (release funds) |
 | `GET` | `/api/admin/withdrawals` | Admin | List pending withdrawal requests from sellers |

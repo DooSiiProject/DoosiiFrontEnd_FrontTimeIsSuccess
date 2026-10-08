@@ -11,6 +11,12 @@ namespace Doosii.BLL.DTOs
         public string? RejectionReason { get; set; }
     }
 
+    public class RejectKycRequest
+    {
+        [MaxLength(1000, ErrorMessage = "Lý do từ chối tối đa 1000 ký tự.")]
+        public string? Reason { get; set; }
+    }
+
     public class ArbitrateDisputeRequest
     {
         /// <summary>

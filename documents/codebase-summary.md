@@ -18,14 +18,14 @@ src/
 │   │   ├── AuthController.cs      # Endpoints: /register, /login, /google, /refresh, /forgot-password, /verify-otp, /reset-password, /me
 │   │   ├── OrdersController.cs    # Endpoints: /create-escrow, /{id}, /my-purchases, /my-sales, /{id}/ship, /{id}/confirm-received
 │   │   ├── PaymentsController.cs  # Endpoints: /payos-qr, /order/{id}/status, /webhook
-│   │   ├── UsersController.cs     # Endpoints: /profile, /seller-application, /seller-application/status
+│   │   ├── UsersController.cs     # Endpoints: /profile, /seller-application, /seller-application/me (GET, PUT, DELETE)
 │   │   ├── StoresController.cs    # Endpoints: /stores, /{storeId}, /{storeId}/products
 │   │   ├── ProductsController.cs  # Endpoints: /{productId} (PUT, DELETE)
 │   │   ├── MapController.cs       # Endpoints: /nearby-stores (Haversine spatial calculation)
 │   │   ├── SellerWalletController.cs # Endpoints: /seller/wallet, /seller/wallet/withdraw, /seller/wallet/withdrawals
 │   │   ├── AnnouncementsController.cs # Endpoints: /seller/announcements, /announcements/upcoming
 │   │   ├── NotificationsController.cs # Endpoints: /notifications, /unread-count, /{id}/read, /read-all
-│   │   └── AdminController.cs     # Endpoints: /admin/kyc-requests, /admin/disputes, /admin/withdrawals, /admin/analytics
+│   │   └── AdminController.cs     # Endpoints: /admin/kyc-requests (GET, /pending, /{id}, /{id}/approve, /{id}/reject), /admin/disputes, /admin/withdrawals, /admin/analytics
 │   ├── Properties/
 │   │   └── launchSettings.json    # http: 5241, https: 7117
 │   ├── appsettings.json           # Connection string, JWT secret, Google ClientId, PayOS config

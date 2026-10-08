@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Doosii.BLL.DTOs
 {
-    public class SellerApplicationRequest
+    public class UpdateSellerApplicationRequest
     {
         [Required(ErrorMessage = "Ten cua hang la bat buoc.")]
         [MaxLength(200, ErrorMessage = "Ten cua hang khong duoc vuot qua 200 ky tu.")]
@@ -48,12 +48,10 @@ namespace Doosii.BLL.DTOs
         [MaxLength(1000)]
         public string? FrontFacadeUrl { get; set; }
 
-        [Required(ErrorMessage = "Anh CCCD mat truoc la bat buoc.")]
         [MaxLength(1000)]
-        public string IdCardFrontUrl { get; set; } = string.Empty;
+        public string? IdCardFrontUrl { get; set; }
 
-        [Required(ErrorMessage = "Anh CCCD mat sau la bat buoc.")]
         [MaxLength(1000)]
-        public string IdCardBackUrl { get; set; } = string.Empty;
+        public string? IdCardBackUrl { get; set; }
     }
 }

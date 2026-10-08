@@ -36,7 +36,87 @@ namespace Doosii.API.Controllers
         }
 
         /// <summary>
-        /// Phê duyệt hoặc từ chối hồ sơ đăng ký mở shop của người bán
+        /// Lấy danh sách các đơn mở shop chưa duyệt (status: PENDING)
+        /// </summary>
+        [HttpGet("kyc-requests/pending")]
+        public async Task<IActionResult> GetPendingKycRequests()
+        {
+            try
+            {
+                var result = await _adminService.GetKycRequestsAsync("PENDING");
+                return Ok(ApiResponse<List<MerchantProfileDto>>.SuccessResponse(result, "Lấy danh sách đơn mở shop chưa duyệt thành công."));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, ApiResponse<List<MerchantProfileDto>>.ErrorResponse("Đã xảy ra lỗi máy chủ nội bộ.", new List<string> { ex.Message }));
+            }
+        }
+
+        /// <summary>
+        /// Lấy thông tin chi tiết một đơn mở shop theo ID
+        /// </summary>
+        [HttpGet("kyc-requests/{id:int}")]
+        public async Task<IActionResult> GetKycRequestById(int id)
+        {
+            try
+            {
+                var result = await _adminService.GetKycRequestByIdAsync(id);
+                return Ok(ApiResponse<MerchantProfileDto>.SuccessResponse(result, "Lấy thông tin chi tiết đơn mở shop thành công."));
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(ApiResponse<MerchantProfileDto>.ErrorResponse(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, ApiResponse<MerchantProfileDto>.ErrorResponse("Đã xảy ra lỗi máy chủ nội bộ.", new List<string> { ex.Message }));
+            }
+        }
+
+        /// <summary>
+        /// Phê duyệt đơn mở shop (Cập nhật status sang APPROVED, tự động nâng quyền Seller)
+        /// </summary>
+        [HttpPut("kyc-requests/{id:int}/approve")]
+        public async Task<IActionResult> ApproveKycRequest(int id)
+        {
+            try
+            {
+                var result = await _adminService.ApproveKycRequestAsync(id);
+                return Ok(ApiResponse<MerchantProfileDto>.SuccessResponse(result, "Phê duyệt đơn mở shop thành công. Người dùng đã được nâng cấp quyền Người bán (Seller)."));
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(ApiResponse<MerchantProfileDto>.ErrorResponse(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, ApiResponse<MerchantProfileDto>.ErrorResponse("Đã xảy ra lỗi máy chủ nội bộ.", new List<string> { ex.Message }));
+            }
+        }
+
+        /// <summary>
+        /// Từ chối đơn mở shop (Cập nhật status sang REJECTED kèm lý do)
+        /// </summary>
+        [HttpPut("kyc-requests/{id:int}/reject")]
+        public async Task<IActionResult> RejectKycRequest(int id, [FromBody] RejectKycRequest? request)
+        {
+            try
+            {
+                var result = await _adminService.RejectKycRequestAsync(id, request?.Reason);
+                return Ok(ApiResponse<MerchantProfileDto>.SuccessResponse(result, "Đã từ chối đơn mở shop."));
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(ApiResponse<MerchantProfileDto>.ErrorResponse(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, ApiResponse<MerchantProfileDto>.ErrorResponse("Đã xảy ra lỗi máy chủ nội bộ.", new List<string> { ex.Message }));
+            }
+        }
+
+        /// <summary>
+        /// Phê duyệt hoặc từ chối hồ sơ đăng ký mở shop của người bán (Tương thích ngược)
         /// </summary>
         [HttpPost("kyc-requests/{id:int}/verdict")]
         public async Task<IActionResult> ReviewKycRequest(int id, [FromBody] ReviewKycRequest request)

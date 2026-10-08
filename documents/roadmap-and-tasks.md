@@ -65,7 +65,7 @@ The backend workload is divided **50 / 50** between **Wee** and **Tri** based on
 - [x] `[Wee]` Google OAuth login integration (`IsGoogle = true`) `[Completed]`
 - [x] `[Wee]` Refresh token mechanism (`POST /api/auth/refresh`) `[Completed]`
 - [x] `[Tri]` User profile update API (`PUT /api/users/profile`) `[Completed]`
-- [x] `[Tri]` Store KYC application submission API (`POST /api/users/seller-application`) `[Completed]`
+- [x] `[Tri/Wee]` Store KYC application & review workflow (Enhanced with contact name, email, address type OLD/NEW, established date, tax code, shop media URLs, user CRUD & admin approve/reject) `[Completed]`
 
 ---
 
