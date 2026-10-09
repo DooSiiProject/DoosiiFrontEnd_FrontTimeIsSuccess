@@ -52,5 +52,7 @@ namespace Doosii.DAL.Models.Store
         public ICollection<Product> Products { get; set; } = new List<Product>();
 
         public ICollection<StoreLocation> Locations { get; set; } = new List<StoreLocation>();
+
+        public ICollection<StoreReview> Reviews { get; set; } = new List<StoreReview>();
     }
 }

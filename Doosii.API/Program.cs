@@ -24,6 +24,7 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IStoreService, StoreService>();
 builder.Services.AddScoped<IProductService, ProductService>();
+builder.Services.AddScoped<IStoreReviewService, StoreReviewService>();
 
 // Services từ Track 2 (Wee)
 builder.Services.AddScoped<IEmailService, EmailService>();

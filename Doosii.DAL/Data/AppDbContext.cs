@@ -1,8 +1,8 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Doosii.DAL.Models;
-using Doosii.DAL.Models.Notification;
-using Doosii.DAL.Models.Order;
 using Doosii.DAL.Models.Store;
+using Doosii.DAL.Models.Order;
+using Doosii.DAL.Models.Notification;
 
 namespace Doosii.DAL.Data
 {
@@ -24,6 +24,7 @@ namespace Doosii.DAL.Data
         public DbSet<Product> Products { get; set; }
         public DbSet<ProductImage> ProductImages { get; set; }
         public DbSet<BaleAnnouncement> BaleAnnouncements { get; set; }
+        public DbSet<StoreReview> StoreReviews { get; set; }
 
         // Order & Escrow Module (Track 2 - Wee)
         public DbSet<Order> Orders { get; set; }
@@ -220,6 +221,33 @@ namespace Doosii.DAL.Data
                 entity.HasIndex(b => b.StoreId);
                 entity.HasIndex(b => b.Status);
                 entity.HasIndex(b => b.EventTime);
+            });
+
+            // Store schema - StoreReview
+            modelBuilder.Entity<StoreReview>(entity =>
+            {
+                entity.ToTable("StoreReviews", "store", t =>
+                {
+                    t.HasCheckConstraint("CK_StoreReviews_Rating", "[Rating] >= 1 AND [Rating] <= 5");
+                });
+
+                entity.HasOne(r => r.Store)
+                      .WithMany(s => s.Reviews)
+                      .HasForeignKey(r => r.StoreId)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(r => r.User)
+                      .WithMany(u => u.StoreReviews)
+                      .HasForeignKey(r => r.UserId)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(r => r.Order)
+                      .WithMany()
+                      .HasForeignKey(r => r.OrderId)
+                      .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasIndex(r => new { r.StoreId, r.UserId })
+                      .IsUnique();
             });
         }
     }

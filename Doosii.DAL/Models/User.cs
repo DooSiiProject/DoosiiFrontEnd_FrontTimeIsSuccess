@@ -1,4 +1,4 @@
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Doosii.DAL.Models.Store;
 
@@ -28,5 +28,6 @@ namespace Doosii.DAL.Models
         // Navigation
         public MerchantProfile? MerchantProfile { get; set; }
         public ICollection<Doosii.DAL.Models.Store.Store> Stores { get; set; } = new List<Doosii.DAL.Models.Store.Store>();
+        public ICollection<StoreReview> StoreReviews { get; set; } = new List<StoreReview>();
     }
 }

@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -12,6 +12,7 @@ namespace Doosii.DAL.Migrations
         {
             migrationBuilder.AddColumn<bool>(
                 name: "IsGoogle",
+                schema: "auth",
                 table: "Users",
                 type: "bit",
                 nullable: false,
@@ -23,6 +24,7 @@ namespace Doosii.DAL.Migrations
         {
             migrationBuilder.DropColumn(
                 name: "IsGoogle",
+                schema: "auth",
                 table: "Users");
         }
     }

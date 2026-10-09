@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -42,12 +42,14 @@ namespace Doosii.DAL.Migrations
                     table.ForeignKey(
                         name: "FK_Orders_Users_BuyerId",
                         column: x => x.BuyerId,
+                        principalSchema: "auth",
                         principalTable: "Users",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_Orders_Users_SellerId",
                         column: x => x.SellerId,
+                        principalSchema: "auth",
                         principalTable: "Users",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
@@ -75,6 +77,7 @@ namespace Doosii.DAL.Migrations
                     table.ForeignKey(
                         name: "FK_WithdrawalRequests_Users_UserId",
                         column: x => x.UserId,
+                        principalSchema: "auth",
                         principalTable: "Users",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
@@ -108,6 +111,7 @@ namespace Doosii.DAL.Migrations
                     table.ForeignKey(
                         name: "FK_Disputes_Users_RaisedByUserId",
                         column: x => x.RaisedByUserId,
+                        principalSchema: "auth",
                         principalTable: "Users",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
