@@ -19,6 +19,38 @@ namespace Doosii.API.Controllers
         }
 
         /// <summary>
+        /// Xem chi tiet mot san pham (public). Khong can dang nhap.
+        /// Product AVAILABLE / LOCKED / SOLD deu xem duoc, tra dung status.
+        /// Tra 404 neu product khong ton tai hoac store da inactive.
+        /// </summary>
+        [HttpGet("{productId:int}")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetProductDetail(int productId)
+        {
+            try
+            {
+                var result = await _productService.GetProductDetailAsync(productId);
+                return Ok(ApiResponse.Ok(result, "Product details retrieved successfully"));
+            }
+            catch (KeyNotFoundException ex)
+            {
+                var errorCode = ex.Message switch
+                {
+                    "PRODUCT_NOT_FOUND" => "PRODUCT_NOT_FOUND",
+                    "STORE_NOT_ACTIVE"  => "STORE_NOT_ACTIVE",
+                    _                   => "NOT_FOUND"
+                };
+                var userMsg = ex.Message switch
+                {
+                    "PRODUCT_NOT_FOUND" => "Product not found",
+                    "STORE_NOT_ACTIVE"  => "Store is no longer active",
+                    _                   => ex.Message
+                };
+                return NotFound(ApiResponse.Fail(userMsg, new List<string> { errorCode }));
+            }
+        }
+
+        /// <summary>
         /// Cap nhat san pham. Chi owner. Khong chinh sua LOCKED/SOLD.
         /// </summary>
         [HttpPut("{productId:int}")]

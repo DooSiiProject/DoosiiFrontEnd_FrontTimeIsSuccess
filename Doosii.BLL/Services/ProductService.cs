@@ -101,7 +101,6 @@ namespace Doosii.BLL.Services
             product.StyleTags = request.StyleTags?.Trim();
             product.UpdatedAt = DateTime.UtcNow;
 
-            // Replace images
             _context.ProductImages.RemoveRange(product.Images);
             var newImages = request.ImageUrls
                 .Select((url, index) => new ProductImage
@@ -142,6 +141,7 @@ namespace Doosii.BLL.Services
                 throw new KeyNotFoundException("Khong tim thay cua hang hoac cua hang khong hoat dong.");
 
             var query = _context.Products
+                .AsNoTracking()
                 .Include(p => p.Category)
                 .Include(p => p.Images)
                 .Where(p => p.StoreId == storeId && p.Status == "AVAILABLE")
@@ -162,6 +162,77 @@ namespace Doosii.BLL.Services
                 PageSize = pageSize
             };
         }
+
+        /// <summary>
+        /// Xem chi tiet mot san pham (public). Tra 404 neu product khong ton tai hoac store inactive.
+        /// Product AVAILABLE / LOCKED / SOLD deu xem duoc nhung tra dung status.
+        /// </summary>
+        public async Task<ProductDetailDto> GetProductDetailAsync(int productId)
+        {
+            // Single query - lay product kem Store (va Location), Category, Images, khong lay thong tin nhay cam cua Owner
+            var product = await _context.Products
+                .AsNoTracking()
+                .Include(p => p.Store)
+                    .ThenInclude(s => s.Locations)
+                .Include(p => p.Category)
+                .Include(p => p.Images)
+                .FirstOrDefaultAsync(p => p.Id == productId);
+
+            if (product == null)
+                throw new KeyNotFoundException("PRODUCT_NOT_FOUND");
+
+            // Kiem tra store phai ton tai va dang active
+            if (!product.Store.IsActive)
+                throw new KeyNotFoundException("STORE_NOT_ACTIVE");
+
+            var primaryLocation = product.Store.Locations.FirstOrDefault();
+
+            return new ProductDetailDto
+            {
+                ProductId = product.Id,
+                Title = product.Title,
+                Description = product.Description,
+                Price = product.Price,
+                Size = product.Size,
+                ConditionPercent = product.ConditionPercent,
+                Status = product.Status,
+                StyleTags = product.StyleTags,
+                CreatedAt = product.CreatedAt,
+                UpdatedAt = product.UpdatedAt,
+                Store = new ProductDetailStoreDto
+                {
+                    StoreId = product.Store.Id,
+                    StoreName = product.Store.Name,
+                    StoreAddress = product.Store.Address ?? primaryLocation?.Address,
+                    StorePhone = product.Store.Phone,
+                    StoreLocation = primaryLocation != null ? new StoreLocationDto
+                    {
+                        Id = primaryLocation.Id,
+                        Latitude = primaryLocation.Latitude,
+                        Longitude = primaryLocation.Longitude,
+                        Address = primaryLocation.Address
+                    } : null,
+                    RatingAverage = product.Store.RatingAverage,
+                    RatingCount = product.Store.RatingCount
+                },
+                Category = new ProductCategoryDto
+                {
+                    Id = product.Category.Id,
+                    Name = product.Category.Name,
+                    Slug = product.Category.Slug
+                },
+                Images = product.Images
+                    .OrderBy(i => i.DisplayOrder)
+                    .Select(i => new ProductImageDto
+                    {
+                        Id = i.Id,
+                        ImageUrl = i.ImageUrl,
+                        DisplayOrder = i.DisplayOrder
+                    }).ToList()
+            };
+        }
+
+        // ============ Private helpers ============
 
         private async Task<ProductDto> GetProductDtoAsync(int productId)
         {
