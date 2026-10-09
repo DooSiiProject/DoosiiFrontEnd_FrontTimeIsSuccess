@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Doosii.DAL.Models.Store;
 
@@ -19,6 +19,7 @@ namespace Doosii.DAL.Models
         public string PasswordHash { get; set; } = string.Empty;
         [MaxLength(50)]
         public string Role { get; set; } = "Customer";
+        public bool IsGoogle { get; set; } = false;
         [MaxLength(500)]
         public string? AvatarUrl { get; set; }
         public string? DeliveryAddress { get; set; }

@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
 namespace Doosii.BLL.DTOs
 {
@@ -8,14 +8,23 @@ namespace Doosii.BLL.DTOs
         [MaxLength(200, ErrorMessage = "Ten cua hang khong duoc vuot qua 200 ky tu.")]
         public string StoreName { get; set; } = string.Empty;
 
+        [MaxLength(100, ErrorMessage = "Ten nguoi dung khong duoc vuot qua 100 ky tu.")]
+        public string? ContactName { get; set; }
+
+        [EmailAddress(ErrorMessage = "Email khong hop le.")]
+        [MaxLength(256, ErrorMessage = "Email khong duoc vuot qua 256 ky tu.")]
+        public string? ContactEmail { get; set; }
+
         [Required(ErrorMessage = "So dien thoai la bat buoc.")]
         [MaxLength(20, ErrorMessage = "So dien thoai khong duoc vuot qua 20 ky tu.")]
         [Phone(ErrorMessage = "So dien thoai khong hop le.")]
         public string Phone { get; set; } = string.Empty;
 
-        [Required(ErrorMessage = "Dia chi la bat buoc.")]
         [MaxLength(500, ErrorMessage = "Dia chi khong duoc vuot qua 500 ky tu.")]
-        public string Address { get; set; } = string.Empty;
+        public string? Address { get; set; }
+
+        [MaxLength(20)]
+        public string? AddressType { get; set; } = "NEW";
 
         [Range(-90.0, 90.0, ErrorMessage = "Latitude phai nam trong khoang -90 den 90.")]
         public double? Latitude { get; set; }
@@ -23,13 +32,21 @@ namespace Doosii.BLL.DTOs
         [Range(-180.0, 180.0, ErrorMessage = "Longitude phai nam trong khoang -180 den 180.")]
         public double? Longitude { get; set; }
 
-        [Required(ErrorMessage = "Anh giay phep kinh doanh la bat buoc.")]
-        [MaxLength(1000)]
-        public string LicenseImageUrl { get; set; } = string.Empty;
+        public DateTime? EstablishedDate { get; set; }
 
-        [Required(ErrorMessage = "Anh mat tien cua hang la bat buoc.")]
+        [MaxLength(50, ErrorMessage = "Ma so thue khong duoc vuot qua 50 ky tu.")]
+        public string? TaxCode { get; set; }
+
+        /// <summary>
+        /// Danh sach URL hinh anh va video cua shop
+        /// </summary>
+        public List<string>? ShopMediaUrls { get; set; }
+
         [MaxLength(1000)]
-        public string FrontFacadeUrl { get; set; } = string.Empty;
+        public string? LicenseImageUrl { get; set; }
+
+        [MaxLength(1000)]
+        public string? FrontFacadeUrl { get; set; }
 
         [Required(ErrorMessage = "Anh CCCD mat truoc la bat buoc.")]
         [MaxLength(1000)]

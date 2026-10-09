@@ -1,4 +1,4 @@
-﻿# Doosii - System Architecture
+# Doosii - System Architecture
 
 ## 1. Architectural Style: Modular Monolith
 To ensure rapid development, ACID transactional consistency, low operational overhead, and no complex network latency for EXE201, Doosii adopts a **Modular Monolith** architecture pattern with **In-Process communication** (eliminating premature microservices complexity such as gRPC or RabbitMQ).
@@ -60,13 +60,14 @@ All tables reside within `DoosiiDb`, organized cleanly into logical database sch
 - **`auth` schema**:
   - `Users` (`Id`, `Email`, `FullName`, `PasswordHash`, `Role`, `IsGoogle`, `CreatedAt`)
   - `RefreshTokens` (`Id`, `UserId`, `Token`, `ExpiresAt`, `IsRevoked`)
-  - `MerchantProfiles` (`Id`, `UserId`, `StoreName`, `Phone`, `Address`, `Latitude`, `Longitude`, `KycStatus`, `LicenseImageUrl`, `FrontFacadeUrl`, `IdCardFrontUrl`, `IdCardBackUrl`)
+  - `MerchantProfiles` (`Id`, `UserId`, `ContactName`, `ContactEmail`, `StoreName`, `Phone`, `Address`, `AddressType`, `Latitude`, `Longitude`, `EstablishedDate`, `TaxCode`, `ShopMediaUrls`, `KycStatus`, `LicenseImageUrl`, `FrontFacadeUrl`, `IdCardFrontUrl`, `IdCardBackUrl`, `RejectionReason`)
 - **`store` schema**:
   - `Stores` (`Id`, `OwnerId`, `Name`, `Description`, `OpeningHours`, `IsActive`, `RatingAverage`, `RatingCount`)
   - `StoreLocations` (`StoreId`, `Latitude`, `Longitude`, `Address`)
   - `Categories` (`Id`, `Name`, `Slug`)
   - `Products` (`Id`, `StoreId`, `Title`, `Description`, `Price`, `Size`, `ConditionPercent`, `Status` [AVAILABLE, LOCKED, SOLD], `StyleTags`)
   - `ProductImages` (`Id`, `ProductId`, `ImageUrl`, `DisplayOrder`)
+  - `BaleAnnouncements` (`Id`, `StoreId`, `SellerId`, `Title`, `BannerUrl`, `EventTime`, `Description`, `BroadcastFee`, `PaymentMethod`, `Status`, `CreatedAt`)
   - `StoreReviews` (`Id`, `StoreId`, `UserId`, `Rating`, `Comment`, `Images`)
 - **`order` schema**:
   - `Orders` (`Id`, `BuyerId`, `SellerId`, `TotalAmount`, `ProductPrice`, `ShippingFee`, `EscrowFee`, `Status` [PENDING_PAYMENT, ESCROW_HOLDING, IN_TRANSIT, COMPLETED_RELEASED, DISPUTED, REFUNDED, CANCELLED], `CreatedAt`)

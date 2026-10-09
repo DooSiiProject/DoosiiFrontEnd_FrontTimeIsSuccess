@@ -1,0 +1,57 @@
+using System.ComponentModel.DataAnnotations;
+
+namespace Doosii.BLL.DTOs
+{
+    public class UpdateSellerApplicationRequest
+    {
+        [Required(ErrorMessage = "Ten cua hang la bat buoc.")]
+        [MaxLength(200, ErrorMessage = "Ten cua hang khong duoc vuot qua 200 ky tu.")]
+        public string StoreName { get; set; } = string.Empty;
+
+        [MaxLength(100, ErrorMessage = "Ten nguoi dung khong duoc vuot qua 100 ky tu.")]
+        public string? ContactName { get; set; }
+
+        [EmailAddress(ErrorMessage = "Email khong hop le.")]
+        [MaxLength(256, ErrorMessage = "Email khong duoc vuot qua 256 ky tu.")]
+        public string? ContactEmail { get; set; }
+
+        [Required(ErrorMessage = "So dien thoai la bat buoc.")]
+        [MaxLength(20, ErrorMessage = "So dien thoai khong duoc vuot qua 20 ky tu.")]
+        [Phone(ErrorMessage = "So dien thoai khong hop le.")]
+        public string Phone { get; set; } = string.Empty;
+
+        [MaxLength(500, ErrorMessage = "Dia chi khong duoc vuot qua 500 ky tu.")]
+        public string? Address { get; set; }
+
+        [MaxLength(20)]
+        public string? AddressType { get; set; } = "NEW";
+
+        [Range(-90.0, 90.0, ErrorMessage = "Latitude phai nam trong khoang -90 den 90.")]
+        public double? Latitude { get; set; }
+
+        [Range(-180.0, 180.0, ErrorMessage = "Longitude phai nam trong khoang -180 den 180.")]
+        public double? Longitude { get; set; }
+
+        public DateTime? EstablishedDate { get; set; }
+
+        [MaxLength(50, ErrorMessage = "Ma so thue khong duoc vuot qua 50 ky tu.")]
+        public string? TaxCode { get; set; }
+
+        /// <summary>
+        /// Danh sach URL hinh anh va video cua shop
+        /// </summary>
+        public List<string>? ShopMediaUrls { get; set; }
+
+        [MaxLength(1000)]
+        public string? LicenseImageUrl { get; set; }
+
+        [MaxLength(1000)]
+        public string? FrontFacadeUrl { get; set; }
+
+        [MaxLength(1000)]
+        public string? IdCardFrontUrl { get; set; }
+
+        [MaxLength(1000)]
+        public string? IdCardBackUrl { get; set; }
+    }
+}

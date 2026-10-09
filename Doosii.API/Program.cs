@@ -1,26 +1,47 @@
-﻿using System.Text;
+using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Doosii.API.BackgroundServices;
 using Doosii.BLL.Interfaces;
 using Doosii.BLL.Services;
 using Doosii.DAL.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. Cáº¥u hÃ¬nh EF Core vá»›i SQL Server
+// 1. Cấu hình EF Core với SQL Server
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(connectionString));
+{
+    options.UseSqlServer(connectionString);
+    options.ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+});
 
-// 2. ÄÄƒng kÃ½ Dependency Injection cho Services
+// 2. Đăng ký Dependency Injection cho Services
+// Services từ Track 1 (Trí)
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IStoreService, StoreService>();
 builder.Services.AddScoped<IProductService, ProductService>();
 
-// 3. Cáº¥u hÃ¬nh JWT Authentication
+// Services từ Track 2 (Wee)
+builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<IProductLockService, MockProductLockService>();
+builder.Services.AddScoped<IOrderService, OrderService>();
+builder.Services.AddScoped<IPaymentService, PaymentService>();
+builder.Services.AddScoped<IWalletService, WalletService>();
+builder.Services.AddScoped<IAdminService, AdminService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<IAnnouncementService, AnnouncementService>();
+
+// SignalR Real-time Services (Track 2 - Wee)
+builder.Services.AddSignalR();
+
+// Background Workers (Track 2 - Wee)
+builder.Services.AddHostedService<OrderEscrowBackgroundService>();
+
+// 3. Cấu hình JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
 var secretKey = jwtSettings["SecretKey"] ?? "SuperSecretKeyForSecondHandMarketAuthApi123456!";
 var key = Encoding.UTF8.GetBytes(secretKey);
@@ -45,20 +66,35 @@ builder.Services.AddAuthentication(options =>
         ValidateLifetime = true,
         ClockSkew = TimeSpan.Zero
     };
+
+    // Hỗ trợ truyền JWT Token qua Query string cho WebSockets SignalR
+    options.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            var accessToken = context.Request.Query["access_token"];
+            var path = context.HttpContext.Request.Path;
+            if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+            {
+                context.Token = accessToken;
+            }
+            return Task.CompletedTask;
+        }
+    };
 });
 
 builder.Services.AddAuthorization();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
-// 4. Cáº¥u hÃ¬nh Swagger cÃ³ nÃºt Authorize vá»›i Bearer Token
+// 4. Cấu hình Swagger có nút Authorize với Bearer Token
 builder.Services.AddSwaggerGen(options =>
 {
     options.SwaggerDoc("v1", new OpenApiInfo
     {
-        Title = "Doosii Auth API",
+        Title = "Doosii API",
         Version = "v1",
-        Description = "Web API Authentication cho sÃ n buÃ´n bÃ¡n Ä‘á»“ si Doosii"
+        Description = "Web API cho sàn buôn bán đồ si Doosii"
     });
 
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -68,7 +104,7 @@ builder.Services.AddSwaggerGen(options =>
         Scheme = "Bearer",
         BearerFormat = "JWT",
         In = ParameterLocation.Header,
-        Description = "Nháº­p token JWT dáº¡ng: {your_token}"
+        Description = "Nhập token JWT dạng: {your_token}"
     });
 
     options.AddSecurityRequirement(new OpenApiSecurityRequirement
@@ -89,7 +125,7 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
-// 5. Tá»± Ä‘á»™ng Ã¡p dá»¥ng EF Core Code-First Migration khi á»©ng dá»¥ng khá»Ÿi cháº¡y
+// 5. Tự động áp dụng EF Core Code-First Migration khi ứng dụng khởi chạy
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
@@ -98,6 +134,21 @@ using (var scope = app.Services.CreateScope())
         var dbContext = services.GetRequiredService<AppDbContext>();
         dbContext.Database.Migrate();
         Console.WriteLine("--> Database migration applied successfully!");
+
+        // Khởi tạo tài khoản Admin mặc định nếu chưa tồn tại
+        if (!dbContext.Users.Any(u => u.Email == "admin@doosii.com"))
+        {
+            dbContext.Users.Add(new Doosii.DAL.Models.User
+            {
+                Email = "admin@doosii.com",
+                FullName = "Doosii System Administrator",
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword("Password123!"),
+                Role = "Admin",
+                CreatedAt = DateTime.UtcNow
+            });
+            dbContext.SaveChanges();
+            Console.WriteLine("--> Default Admin account seeded: admin@doosii.com / Password123!");
+        }
     }
     catch (Exception ex)
     {
@@ -118,5 +169,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<Doosii.BLL.Hubs.NotificationHub>("/hubs/notifications");
 
 app.Run();

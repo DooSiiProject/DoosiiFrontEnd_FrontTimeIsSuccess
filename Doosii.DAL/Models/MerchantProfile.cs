@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Doosii.DAL.Models
@@ -13,6 +13,12 @@ namespace Doosii.DAL.Models
         [Required]
         public int UserId { get; set; }
 
+        [MaxLength(100)]
+        public string? ContactName { get; set; }
+
+        [MaxLength(256)]
+        public string? ContactEmail { get; set; }
+
         [Required]
         [MaxLength(200)]
         public string StoreName { get; set; } = string.Empty;
@@ -25,9 +31,20 @@ namespace Doosii.DAL.Models
         [MaxLength(500)]
         public string Address { get; set; } = string.Empty;
 
+        [MaxLength(20)]
+        public string? AddressType { get; set; } = "NEW";
+
         public double? Latitude { get; set; }
 
         public double? Longitude { get; set; }
+
+        public DateTime? EstablishedDate { get; set; }
+
+        [MaxLength(50)]
+        public string? TaxCode { get; set; }
+
+        [MaxLength(4000)]
+        public string? ShopMediaUrls { get; set; }
 
         [Required]
         [MaxLength(20)]

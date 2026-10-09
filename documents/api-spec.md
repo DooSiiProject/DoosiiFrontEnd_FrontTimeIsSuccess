@@ -1,4 +1,4 @@
-﻿# Doosii - API Specification
+# Doosii - API Specification
 
 ## 1. Overview & Conventions
 - **Base URL**: `http://localhost:5241/api` (or `https://localhost:7117/api`)
@@ -18,20 +18,29 @@
 | `POST` | `/api/auth/google` | Public | Sign in / register with Google OAuth payload |
 | `POST` | `/api/auth/refresh` | Public | Refresh expired access token using refresh token |
 | `POST` | `/api/auth/forgot-password` | Public | Send 6-digit OTP to user's registered email |
+| `POST` | `/api/auth/verify-otp` | Public | Verify 6-digit OTP code before proceeding to reset password |
 | `POST` | `/api/auth/reset-password` | Public | Reset password using verified OTP |
 | `GET` | `/api/auth/me` | Authenticated | Retrieve authenticated user's profile |
 | `PUT` | `/api/users/profile` | Authenticated | Update full name, avatar URL (Cloudinary), delivery address |
-| `POST` | `/api/users/seller-application` | Customer | Submit store KYC application (store name, phone, address, coordinates, facade photo, ID card) |
+| `POST` | `/api/users/seller-application` | Customer | Submit store application (name, contact name, email, phone, address, addressType [OLD/NEW], coordinates, establishedDate, taxCode, shopMediaUrls, ID card front/back) |
+| `GET` | `/api/users/seller-application/me` | Customer | Retrieve submitted store application of the current authenticated user |
+| `PUT` | `/api/users/seller-application/me` | Customer | Edit / resubmit store application when status is `PENDING` or `REJECTED` |
+| `DELETE` | `/api/users/seller-application/me` | Customer | Cancel / remove submitted store application while in `PENDING` status |
 
 ---
 
-### 2.2. Thrift Map & Store Discovery (`/api/stores`, `/api/map`)
+### 2.2. Thrift Map & Store Discovery (`/api/stores`, `/api/products`, `/api/map`)
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
 | `GET` | `/api/map/nearby-stores` | Public | Search stores by radius (`lat`, `lng`, `radiusKm` [1, 3, 5, 10]) |
-| `GET` | `/api/stores` | Public | Filter stores by style tags, business type (stall/chain/boutique), rating, price segment |
-| `GET` | `/api/stores/{storeId}` | Public | Store details, opening hours, directions link, rating summary |
-| `GET` | `/api/stores/{storeId}/products` | Public | Paginated list of store products (`AVAILABLE` only) |
+| `GET` | `/api/stores` | Public | Filter stores by style tags, rating, price segment, and sort by distance/rating/newest |
+| `POST` | `/api/stores` | Seller (KYC) | Create a new thrift store (Owner must be KYC Approved) |
+| `GET` | `/api/stores/{storeId}` | Public | Store details, opening hours, coordinates, rating summary |
+| `PUT` | `/api/stores/{storeId}` | Store Owner | Update store details (name, description, phone, address, hours, coordinates) |
+| `GET` | `/api/stores/{storeId}/products` | Public | Paginated list of store products (`AVAILABLE` only, 12 or 24 per page) |
+| `POST` | `/api/stores/{storeId}/products` | Store Owner | Add new clothing item to store inventory with images, size, condition % |
+| `PUT` | `/api/products/{productId}` | Product Owner | Update product title, price, description, images (cannot edit if `LOCKED` or `SOLD`) |
+| `DELETE` | `/api/products/{productId}` | Product Owner | Remove product from listing (cannot delete if `LOCKED` or `SOLD`) |
 | `POST` | `/api/stores/{storeId}/reviews` | Buyer | Add rating (1–5 stars), review text, and photos for a shop |
 
 ---
@@ -53,11 +62,13 @@
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
 | `POST` | `/api/orders/create-escrow` | Customer | Create escrow order, lock item for 15 mins, calculate total amount + 2-3% fee |
-| `POST` | `/api/payments/payos-qr` | Customer | Generate dynamic VietQR code with order ID syntax |
+| `POST` | `/api/payments/payos-qr` | Customer | Generate dynamic VietQR code with order ID syntax (`DOSI <OrderId>`) |
+| `GET` | `/api/payments/order/{orderId}/status` | Authenticated | Check real-time payment and escrow status of an order |
 | `POST` | `/api/payments/webhook` | Webhook (PayOS) | Handle payment confirmation, verify signature, transition order to `ESCROW_HOLDING` |
 | `POST` | `/api/orders/{id}/ship` | Seller | Submit shipping carrier and tracking code (moves to `IN_TRANSIT`) |
 | `POST` | `/api/orders/{id}/confirm-received` | Buyer | Confirm receipt of item, release funds to seller wallet (`COMPLETED_RELEASED`) |
 | `POST` | `/api/orders/{id}/dispute` | Buyer | File dispute within 24h with unboxing video / photos (moves to `DISPUTED`) |
+| `GET` | `/api/orders/{id}/dispute` | Authenticated | View dispute details of an order |
 | `GET` | `/api/orders/my-purchases` | Customer | Order history of bought items with status tracking |
 | `GET` | `/api/orders/my-sales` | Seller/Customer | Orders sold, pending fulfillment, or in escrow |
 
@@ -68,26 +79,51 @@
 |---|---|---|---|
 | `GET` | `/api/seller/inventory` | Seller | Manage listed items (CRUD, status: `AVAILABLE`, `LOCKED`, `SOLD`) |
 | `POST` | `/api/seller/products` | Seller | Add new store clothing item with images, size, and condition |
-| `POST` | `/api/seller/announcements` | Seller | Purchase a bale-opening broadcast ("khui kiện") and trigger 5km radius notifications |
+| `POST` | `/api/seller/announcements` | Seller | Purchase a bale-opening broadcast ("khui kiện") (max 2/day, 50k VND fee via WALLET or PayOS) |
+| `GET` | `/api/seller/announcements` | Seller | View all bale-opening announcements created for the seller's store |
+| `GET` | `/api/announcements/upcoming` | Public | View active upcoming bale-opening announcements across all stores |
 | `GET` | `/api/seller/wallet` | Seller/Customer | Check available balance, escrow-locked balance, and transaction history |
 | `POST` | `/api/seller/wallet/withdraw` | Seller/Customer | Request withdrawal to personal bank account (minimum 50,000 VND) |
+| `GET` | `/api/seller/wallet/withdrawals` | Seller/Customer | View history of personal bank withdrawal requests |
 
 ---
 
 ### 2.6. Admin Portal (`/api/admin`)
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
-| `GET` | `/api/admin/kyc-requests` | Admin | Review pending store applications |
-| `POST` | `/api/admin/kyc-requests/{id}/verdict` | Admin | Approve or reject store with explanation |
+| `GET` | `/api/admin/kyc-requests` | Admin | Review store applications (supports query `status=PENDING/APPROVED/REJECTED`) |
+| `GET` | `/api/admin/kyc-requests/pending` | Admin | Quick query for pending store applications awaiting review |
+| `GET` | `/api/admin/kyc-requests/{id}` | Admin | View complete details of a store application |
+| `PUT` | `/api/admin/kyc-requests/{id}/approve` | Admin | Approve store application, automatically promoting user to `Seller` |
+| `PUT` | `/api/admin/kyc-requests/{id}/reject` | Admin | Reject store application with specified reason |
+| `POST` | `/api/admin/kyc-requests/{id}/verdict` | Admin | Approve or reject store with explanation (legacy/backward compatibility) |
 | `GET` | `/api/admin/disputes` | Admin | Review disputed escrow orders with unboxing proof |
 | `POST` | `/api/admin/disputes/{id}/arbitrate` | Admin | Rule in favor of Buyer (refund) or Seller (release funds) |
+| `GET` | `/api/admin/withdrawals` | Admin | List pending withdrawal requests from sellers |
+| `POST` | `/api/admin/withdrawals/{id}/process` | Admin | Approve or reject seller withdrawal request |
 | `GET` | `/api/admin/reports` | Admin | List flagged forum posts for moderation |
-| `GET` | `/api/admin/analytics` | Admin | GMV, escrow fee platform revenue, mega-announcement revenue |
+| `GET` | `/api/admin/analytics` | Admin | GMV, escrow fee platform revenue, orders & users metrics |
 
 ---
 
-### 2.7. Real-time Communication (SignalR Hubs)
+### 2.7. In-App Notifications (`/api/notifications`)
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| `GET` | `/api/notifications` | Authenticated | List current user notifications (supports `unreadOnly=true/false` filter, newest 50) |
+| `GET` | `/api/notifications/unread-count` | Authenticated | Get total count of unread notifications for badge indicator |
+| `PUT` | `/api/notifications/{id}/read` | Authenticated | Mark a single notification as read |
+| `PUT` | `/api/notifications/read-all` | Authenticated | Mark all notifications of the current user as read |
+
+---
+
+### 2.8. Real-time Communication (SignalR Hubs)
 - **Chat Hub**: `/hubs/chat`
   - Real-time 1-on-1 messaging between buyer and seller with attached product card.
 - **Notification Hub**: `/hubs/notifications`
-  - Push notifications for order state changes, comments, reactions, and nearby bale-opening alerts.
+  - Authentication: JWT query string parameter `?access_token={jwt}` (for WebSocket connections).
+  - Groups:
+    - Personal Group: `user_{userId}` for targeted order updates, wallet credits, and dispute alerts.
+    - Broadcast Channel: `broadcast_channel` for platform announcements and nearby bale-opening broadcasts.
+  - Client Listeners:
+    - `ReceiveNotification(NotificationDto)`: Real-time event for personal notification.
+    - `ReceiveBroadcast(BroadcastPayload)`: Real-time event for broadcast announcement.
