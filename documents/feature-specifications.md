@@ -62,16 +62,19 @@ This document details all 20 system features, their functional requirements, and
 - **Business Rules**:
   - Filters are combined using logical `AND` conditions.
 
-### REQ-06: Store Profile & Inventory (Chi tiết Cửa hàng & Kho đồ)
+### REQ-06: Store Profile, Reviews & Product Detail (Chi tiết Cửa hàng & Sản phẩm)
 - **Actors**: Guest, Customer, Seller
 - **Requirements**:
   - View store overview, opening hours, Google Maps directions button, average rating.
+  - View single product detail (`GET /api/products/{productId}`): images, size, condition %, price, style tags, store & owner summary (supports `AVAILABLE`, `LOCKED`, `SOLD`).
   - Paginated catalog of store clothing items (12 or 24 items/page).
   - Product statuses: `AVAILABLE`, `LOCKED`, `SOLD`. Only `AVAILABLE` shown to standard buyers.
-  - Store Reviews: Users with completed transaction can post 1–5 stars + text + up to 3 photos.
+  - Store Reviews: Users with completed transaction can post 1–5 stars + text + up to 3 photos (`POST /api/stores/{storeId}/reviews`).
+  - Review Management: Public listing (`GET /api/stores/{storeId}/reviews`, sort by `newest`, `highest`, `lowest`), update review (`PUT`), and delete review (`DELETE`).
+  - Store Spot Posts: Public listing of community spot-sharing posts tagging this store (`GET /api/stores/{storeId}/spot-posts`).
 - **Business Rules**:
   - Each user can post at most 1 review per store (editable).
-  - Store rating = average of all valid reviews.
+  - Store rating = average of all valid reviews (`RatingAverage` and `RatingCount` auto-recalculated on create/update/delete).
 
 ---
 
@@ -80,40 +83,46 @@ This document details all 20 system features, their functional requirements, and
 ### REQ-07: Create Pass Post (Đăng bài thanh lý đồ cá nhân)
 - **Actors**: Customer, Seller
 - **Requirements**:
-  - Title (max 150 chars), detailed description (condition % new, flaws, brand, dimensions/size), pass price (> 0), style tags, 1–5 Cloudinary photos.
+  - Title (max 150 chars), detailed description (condition % new, flaws, brand, dimensions/size), pass price (> 0), style tags, 1–5 Cloudinary photos via `multipart/form-data` (`POST /api/forum/posts/pass`).
+  - View single pass post detail (`GET /api/forum/posts/{id}`): image gallery, seller info, condition %, escrow availability.
   - Checkbox "Allow purchase via Escrow" (default: enabled).
   - Post status: `ACTIVE`, `LOCKED` (under escrow transaction), `SOLD`, `HIDDEN`.
 - **Business Rules**:
-  - Max 10 pass posts per account per 24 hours (anti-spam).
   - Cannot edit price or description once post is `LOCKED` or `SOLD`.
+  - Posts with status `HIDDEN` return 404 to non-admin users.
 
 ### REQ-08: Spot Sharing Post (Đăng bài chia sẻ tọa độ săn đồ)
 - **Actors**: Customer, Seller
 - **Requirements**:
-  - Post outfit photo and tag an existing store on the Thrift Map, or pin a manual GPS coordinate.
-  - Shows in community photos section on the tagged store profile page.
+  - Post outfit photo (1–5 Cloudinary images) and tag an existing store on the Thrift Map, or pin manual GPS coordinates via `multipart/form-data` (`POST /api/forum/posts/spot`).
+  - View spot post detail (`GET /api/forum/posts/spot/{id}`).
+  - Appears in community feed and in tagged store profile page (`GET /api/stores/{storeId}/spot-posts`).
 - **Business Rules**:
   - Spot sharing posts do not have a price or escrow checkout.
+  - Must provide either `TaggedStoreId` or both `Latitude` and `Longitude`.
 
 ### REQ-09: Community Feed & Interactions (Bảng tin & Tương tác)
 - **Actors**: Guest, Authenticated Users
 - **Requirements**:
-  - Feed tabs: Explore (Newest), Pass items near you (GPS radius), By Style.
-  - 2-level hierarchical comments (parent $\rightarrow$ child reply).
-  - Reactions: Like / Heart (1 reaction per user per post).
-  - Report post for scam/counterfeit/offensive content $\rightarrow$ queues for Admin review.
+  - Feed tabs (`GET /api/forum/feed`): Explore (`newest`), Pass items near you (`near-you`, GPS radius 1-10km), By Style (`by-style`).
+  - 2-level hierarchical comments: Root comments and child replies (`POST /api/forum/posts/{id}/comments`), comment tree listing (`GET`), and soft delete (`DELETE /api/forum/comments/{commentId}`).
+  - Reactions: Like / Heart toggle (`POST/GET /api/forum/posts/{id}/reactions`).
+  - Report post (`POST /api/forum/posts/{id}/report`): Report violation for `PASS` or `SPOT` post (`SCAM`, `COUNTERFEIT`, `OFFENSIVE`, `PROHIBITED_CONTENT`, `OTHER`) with optional evidence URLs $\rightarrow$ queues for Admin review.
 - **Business Rules**:
   - Unauthenticated or banned users cannot comment, react, or report.
+  - Only author or Admin can delete comments.
 
-### REQ-10: In-app Chat & Quick Escrow (Nhắn tin & Mua nhanh)
+### REQ-10: In-app Chat & Real-Time Messaging (Nhắn tin & Thẻ sản phẩm)
 - **Actors**: Buyer, Seller
 - **Requirements**:
-  - Open chat directly from a pass post; automatically pins product card to chat header.
-  - Real-time text messaging via SignalR.
-  - "Create Escrow Order Now" button in chat pre-fills product and seller info.
+  - 1-on-1 conversation creation or retrieval (`POST /api/chat/conversations`) between buyer and seller.
+  - Real-time text messaging and interactive product card previews via SignalR Hub (`/hubs/chat`).
+  - REST fallback endpoints for sending messages, sending product cards, and marking as read (`/api/chat`).
+  - Real-time events: `ReceiveMessage`, `ReceiveProductCard`, `MessagesRead`, `UserTyping`.
+  - Conversation inbox sorted by `LastMessageAt` DESC with unread indicators.
 - **Business Rules**:
   - Users cannot initiate a chat with themselves.
-  - Chat logs are preserved for dispute resolution.
+  - Chat logs are preserved permanently for dispute arbitration.
 
 ---
 
@@ -211,9 +220,10 @@ This document details all 20 system features, their functional requirements, and
 ### REQ-20: Admin Portal (Cổng quản trị)
 - **Actors**: Admin
 - **Requirements**:
-  - KYC Review: View store applications, photos, address, approve or reject with reason.
-  - Dispute Arbitration: Review unboxing evidence and seller response, decide refund buyer or release to seller.
-  - Forum Moderation: Review flagged posts, hide/delete violations, ban repeat offenders.
-  - Financial Analytics: GMV, platform escrow commission (2–3%), announcement package revenue.
+  - KYC Review: View store applications, photos, address, approve or reject with reason (`/api/admin/kyc-requests`).
+  - Dispute Arbitration: Review unboxing evidence and seller response, decide refund buyer or release to seller (`/api/admin/disputes`).
+  - Forum Moderation: View flagged post queue (`GET /api/admin/reports`), take disciplinary verdict (`PUT /api/admin/reports/{reportId}/resolve` with actions: `DISMISS`, `HIDE_POST`, `DELETE_POST`, `BAN_AUTHOR` and `adminNote`).
+  - Withdrawal Processing: Review and approve/reject seller bank payouts (`/api/admin/withdrawals`).
+  - Financial Analytics: GMV, platform escrow commission (2–3%), announcement package revenue (`/api/admin/analytics`).
 - **Business Rules**:
-  - All admin decisions (KYC, dispute, bans) are logged in `AdminAuditLogs`.
+  - All admin decisions (KYC, dispute, bans, report resolutions) are audit-tracked.

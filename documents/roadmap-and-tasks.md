@@ -46,9 +46,9 @@ The backend workload is divided **50 / 50** between **Wee** and **Tri** based on
 | Phase | Duration | Focus Area | Status | Ghi chú nghiệm thu |
 |---|---|---|:---:|---|
 | **Phase 1** | Weeks 1–2 | Requirements, Documentation, Architecture & Schemas | 🟢 Completed | Hoàn thành tài liệu kiến trúc, database ERD, API spec |
-| **Phase 2** | Weeks 3–6 | Core Backend (Auth, Thrift Map, Store & Inventory) | 🟡 In Progress | Wee xong Auth & Store KYC; Tri xong Store/Map, còn thiếu Forum & Cloudinary |
-| **Phase 3** | Weeks 7–10 | Escrow Order Processing, PayOS, SignalR Notification Hub | 🟢 Completed | Wee hoàn thành 100% Escrow, PayOS VietQR, Background Workers |
-| **Phase 4** | Weeks 11–12 | Dispute Workflows, Admin Arbitration & Wallet Payouts | 🟢 Completed | Wee hoàn thành 100% Ví Seller, Khiếu nại unboxing, Trọng tài Admin |
+| **Phase 2** | Weeks 3–6 | Core Backend (Auth, Thrift Map, Store & Inventory) | 🟢 Completed | Wee xong Auth & Store KYC; Tri xong Store, Map, Single Product Detail, Reviews & Cloudinary |
+| **Phase 3** | Weeks 7–10 | Escrow Order Processing, PayOS, SignalR Hubs & Forum | 🟢 Completed | Wee xong Escrow & PayOS VietQR; Tri xong Forum (Pass/Spot/Feed/Comments/Reactions) & ChatHub |
+| **Phase 4** | Weeks 11–12 | Dispute Workflows, Admin Arbitration, Moderation & Wallet | 🟢 Completed | Wee xong Ví & Khiếu nại; Tri xong Post Reports & Admin Moderation Queue |
 | **Phase 5** | Week 13+ | Pilot Launch (Ho Chi Minh City) & Maintenance | ⚪ Upcoming | Sẵn sàng tích hợp Frontend & Test End-to-End thực tế |
 
 ---
@@ -77,21 +77,21 @@ The backend workload is divided **50 / 50** between **Wee** and **Tri** based on
 - [x] `[Tri]` Store & style filtering (Vintage, Y2K, Streetwear, price range, store type, sort by distance/rating/newest) `[Completed]`
 - [x] `[Tri]` Store catalog product listing API (`GET /api/stores/{id}/products`, `POST /api/stores/{id}/products`) `[Completed]`
 - [x] `[Tri]` Product update & delete API (`PUT/DELETE /api/products/{id}`, locked against `LOCKED`/`SOLD`) `[Completed]`
-- [ ] `[Tri]` **API Xem Chi Tiết 1 Sản Phẩm** (`GET /api/products/{productId}`) `[Pending / Tri]`
-- [ ] `[Tri]` **Store Reviews & Rating API** (Bảng `StoreReview`, đánh giá 1–5 sao, tự tính `RatingAverage`) `[Pending / Tri]`
-- [ ] `[Tri]` **Cloudinary Upload Helper Service** (Upload ảnh thực tế qua `multipart/form-data`) `[Pending / Tri]`
+- [x] `[Tri]` **API Xem Chi Tiết 1 Sản Phẩm** (`GET /api/products/{productId}`) `[Completed]`
+- [x] `[Tri]` **Store Reviews & Rating API** (Bảng `StoreReview`, đánh giá 1–5 sao, tự tính `RatingAverage`, migration `AddStoreReviews`) `[Completed]`
+- [x] `[Tri]` **Cloudinary Upload Helper Service** (Upload/delete ảnh qua `multipart/form-data`, `POST /api/uploads/image`, `/images`, `DELETE /{publicId}`) `[Completed]`
 
 ---
 
 ### Module 3: Thrift Forum & Community [Track 1: Tri]
 *Domain Schema: `forum`*
-- [ ] `[Tri]` EF Core Entities: `PassPost`, `PostImage`, `SpotSharingPost`, `Comment`, `Reaction`, `PostReport` `[Pending / Tri]`
-- [ ] `[Tri]` Create Pass Post API (`POST /api/forum/posts/pass`: 1–5 Cloudinary photos, size, condition %, price, allowEscrow) `[Pending / Tri]`
-- [ ] `[Tri]` Spot-sharing post API (`POST /api/forum/posts/spot`: GPS tag hoặc link tới shop Thrift Map) `[Pending / Tri]`
-- [ ] `[Tri]` Community feed API with pagination (`GET /api/forum/feed`: Newest, Near You, By Style) `[Pending / Tri]`
-- [ ] `[Tri]` 2-level comment thread API (`POST /api/forum/posts/{id}/comments`) & Like/Heart reaction toggles `[Pending / Tri]`
-- [ ] `[Tri]` Flag / Report post API (`POST /api/forum/posts/{id}/report`) & Admin moderation queue `[Pending / Tri]`
-- [ ] `[Tri]` SignalR Chat Hub (`/hubs/chat`) for 1-on-1 buyer/seller chat with product card preview & chat history `[Pending / Tri]`
+- [x] `[Tri]` EF Core Entities: `PassPost`, `PostImage`, `SpotSharingPost`, `SpotImage`, `Comment`, `Reaction`, `PostReport`, `Conversation`, `ChatMessage` `[Completed]`
+- [x] `[Tri]` Create Pass Post API (`POST /api/forum/posts/pass`: 1–5 Cloudinary photos, size, condition %, price, allowEscrow, migration `AddForumPassPostSchema`) `[Completed]`
+- [x] `[Tri]` Spot-sharing post API (`POST /api/forum/posts/spot`: GPS tag hoặc link tới shop Thrift Map, migration `AddForumSpotSharingSchema`) `[Completed]`
+- [x] `[Tri]` Community feed API with pagination (`GET /api/forum/feed`: Newest, Near You, By Style) `[Completed]`
+- [x] `[Tri]` 2-level comment thread API (`POST/GET /api/forum/posts/{id}/comments`, soft-delete) & Like/Heart reactions (`POST/GET /api/forum/posts/{id}/reactions`, migration `AddForumCommentsAndReactions`) `[Completed]`
+- [x] `[Tri]` Flag / Report post API (`POST /api/forum/posts/{id}/report`) & Admin moderation queue (`GET /api/admin/reports`, `PUT /resolve`, migration `AddForumPostReports`) `[Completed]`
+- [x] `[Tri]` SignalR Chat Hub (`/hubs/chat`) for 1-on-1 buyer/seller real-time chat with product card preview, mark-as-read, and REST fallback (`/api/chat`, migration `AddForumChatSchema`) `[Completed]`
 
 ---
 
@@ -137,9 +137,9 @@ The backend workload is divided **50 / 50** between **Wee** and **Tri** based on
 | **Thông báo & Mở kiện hàng** | Wee | Đăng ký mở kiện (max 2/ngày, phí 50k), chuông in-app, SignalR Notification Hub | 🟢 **Hoàn thành** | **100%** |
 | **Kiểm thử tự động (Track 2)** | Wee | 8 Test Suites (Happy Paths + 16 Edge Cases & Security) chạy 1 lệnh tự động | 🟢 **Hoàn thành** | **100%** |
 | **Profile người dùng** | Trí | Cập nhật họ tên, avatar, địa chỉ nhận hàng (`PUT /api/users/profile`) | 🟢 **Hoàn thành** | **100%** |
-| **Bản đồ Thrift & Cửa hàng** | Trí | CRUD Cửa hàng, Định vị Haversine GPS (1-10km), Lọc Style/Giá, CRUD Sản phẩm | 🟡 **Hoàn thành 70%** | **70%**<br>*(Thiếu: Xem chi tiết 1 SP, Review/Rating, Cloudinary)* |
-| **Diễn đàn & Cộng đồng (Forum)** | Trí | Đăng bài pass đồ, chia sẻ tọa độ, bảng tin Feed, bình luận 2 cấp, thả tim, báo cáo vi phạm | 🔴 **Chưa bắt đầu** | **0%** |
-| **SignalR Chat Hub** | Trí | Nhắn tin 1-on-1 thời gian thực, ghim card sản phẩm, mua nhanh qua Ký quỹ | 🔴 **Chưa bắt đầu** | **0%** |
+| **Bản đồ Thrift & Cửa hàng** | Trí | CRUD Cửa hàng, Định vị Haversine GPS (1-10km), Lọc Style/Giá, CRUD Sản phẩm, Chi tiết SP, Reviews & Rating, Cloudinary | 🟢 **Hoàn thành** | **100%** |
+| **Diễn đàn & Cộng đồng (Forum)** | Trí | Đăng bài pass đồ, chia sẻ tọa độ, bảng tin Feed, bình luận 2 cấp, thả tim, báo cáo vi phạm & duyệt Admin | 🟢 **Hoàn thành** | **100%** |
+| **SignalR Chat Hub** | Trí | Nhắn tin 1-on-1 thời gian thực, ghim card sản phẩm, đánh dấu đã đọc, REST Chat API fallback | 🟢 **Hoàn thành** | **100%** |
 
 ---
 
