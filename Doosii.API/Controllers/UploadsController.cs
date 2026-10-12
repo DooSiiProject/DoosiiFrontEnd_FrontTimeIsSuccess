@@ -43,7 +43,7 @@ namespace Doosii.API.Controllers
         [RequestSizeLimit(10 * 1024 * 1024)]
         [RequestFormLimits(MultipartBodyLengthLimit = 10 * 1024 * 1024)]
         public async Task<IActionResult> UploadImage(
-            [FromForm] IFormFile file,
+            IFormFile file,
             [FromQuery] string folder = "products")
         {
             var userId = GetCurrentUserId();
@@ -106,7 +106,7 @@ namespace Doosii.API.Controllers
         [RequestSizeLimit(30 * 1024 * 1024)] // 30 MB tong (5 file x 5MB + overhead)
         [RequestFormLimits(MultipartBodyLengthLimit = 30 * 1024 * 1024)]
         public async Task<IActionResult> UploadImages(
-            [FromForm] List<IFormFile> files,
+            List<IFormFile> files,
             [FromQuery] string folder = "products")
         {
             var userId = GetCurrentUserId();
