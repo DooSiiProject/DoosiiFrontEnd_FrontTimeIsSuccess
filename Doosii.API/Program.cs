@@ -26,6 +26,7 @@ builder.Services.AddScoped<IStoreService, StoreService>();
 builder.Services.AddScoped<IProductService, ProductService>();
 builder.Services.AddScoped<IStoreReviewService, StoreReviewService>();
 builder.Services.AddSingleton<ICloudinaryService, CloudinaryService>();
+builder.Services.AddScoped<IPassPostService, PassPostService>();
 
 // Services từ Track 2 (Wee)
 builder.Services.AddScoped<IEmailService, EmailService>();
