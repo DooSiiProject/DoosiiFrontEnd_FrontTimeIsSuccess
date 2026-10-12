@@ -1,4 +1,4 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Doosii.BLL.DTOs;
@@ -12,10 +12,44 @@ namespace Doosii.API.Controllers
     public class ForumController : ControllerBase
     {
         private readonly IPassPostService _passPostService;
+        private readonly ICommunityFeedService _feedService;
 
-        public ForumController(IPassPostService passPostService)
+        public ForumController(
+            IPassPostService passPostService,
+            ICommunityFeedService feedService)
         {
             _passPostService = passPostService;
+            _feedService = feedService;
+        }
+
+        /// <summary>
+        /// Lay danh sach Community Feed (tong hop PassPost va SpotSharingPost).
+        /// Endpoint public, khong bat buoc dang nhap.
+        /// Query parameters:
+        /// - tab: newest | near-you | by-style (mac dinh: newest)
+        /// - style: bat buoc khi tab=by-style
+        /// - lat, lng: bat buoc khi tab=near-you (-90..90, -180..180)
+        /// - radiusKm: 1, 3, 5 hoac 10 (mac dinh: 5)
+        /// - page: bat dau tu 1
+        /// - pageSize: mac dinh 20, toi da 50
+        /// </summary>
+        [HttpGet("feed")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetCommunityFeed([FromQuery] CommunityFeedQuery query)
+        {
+            try
+            {
+                var result = await _feedService.GetFeedAsync(query);
+                return Ok(ApiResponse.Ok(result, "Community feed retrieved successfully"));
+            }
+            catch (ServiceException ex)
+            {
+                return StatusCode(ex.StatusCode, ApiResponse.Fail(ex.Message, new List<string> { ex.ErrorCode }));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string> { ex.Message }));
+            }
         }
 
         /// <summary>

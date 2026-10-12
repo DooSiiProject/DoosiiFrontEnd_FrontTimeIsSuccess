@@ -31,6 +31,7 @@ namespace Doosii.DAL.Data
         public DbSet<PassPost> PassPosts { get; set; }
         public DbSet<PostImage> PostImages { get; set; }
         public DbSet<SpotSharingPost> SpotSharingPosts { get; set; }
+        public DbSet<SpotImage> SpotImages { get; set; }
         public DbSet<Comment> Comments { get; set; }
         public DbSet<Reaction> Reactions { get; set; }
         public DbSet<PostReport> PostReports { get; set; }
@@ -270,19 +271,45 @@ namespace Doosii.DAL.Data
                 entity.HasIndex(i => new { i.PostId, i.DisplayOrder });
             });
 
-            // Forum schema - SpotSharingPost (placeholder)
+            // Forum schema - SpotSharingPost (fully configured)
             modelBuilder.Entity<SpotSharingPost>(entity =>
             {
-                entity.ToTable("SpotSharingPosts", "forum");
+                entity.ToTable("SpotSharingPosts", "forum", t =>
+                {
+                    t.HasCheckConstraint("CK_SpotSharingPosts_Status", "[Status] IN ('ACTIVE','HIDDEN')");
+                });
 
                 entity.HasOne(s => s.Author)
                       .WithMany()
                       .HasForeignKey(s => s.AuthorId)
                       .OnDelete(DeleteBehavior.Restrict);
 
+                entity.HasOne(s => s.TaggedStore)
+                      .WithMany()
+                      .HasForeignKey(s => s.TaggedStoreId)
+                      .OnDelete(DeleteBehavior.SetNull);
+
+                entity.Property(s => s.Status)
+                      .HasDefaultValue("ACTIVE");
+
                 entity.HasIndex(s => s.AuthorId);
-                entity.HasIndex(s => s.Status);
+                entity.HasIndex(s => s.TaggedStoreId);
                 entity.HasIndex(s => s.CreatedAt);
+                entity.HasIndex(s => s.Latitude);
+                entity.HasIndex(s => s.Longitude);
+            });
+
+            // Forum schema - SpotImage
+            modelBuilder.Entity<SpotImage>(entity =>
+            {
+                entity.ToTable("SpotImages", "forum");
+
+                entity.HasOne(i => i.SpotPost)
+                      .WithMany(p => p.Images)
+                      .HasForeignKey(i => i.SpotPostId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(i => new { i.SpotPostId, i.DisplayOrder });
             });
 
             // Forum schema - Comment (placeholder)

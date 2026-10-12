@@ -287,6 +287,36 @@ namespace Doosii.DAL.Migrations
                     b.ToTable("Reactions", "forum");
                 });
 
+            modelBuilder.Entity("Doosii.DAL.Models.Forum.SpotImage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ImageUrl")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("PublicId")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("SpotPostId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SpotPostId", "DisplayOrder");
+
+                    b.ToTable("SpotImages", "forum");
+                });
+
             modelBuilder.Entity("Doosii.DAL.Models.Forum.SpotSharingPost", b =>
                 {
                     b.Property<int>("Id")
@@ -300,24 +330,31 @@ namespace Doosii.DAL.Migrations
 
                     b.Property<string>("Content")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("Location")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
+                    b.Property<decimal?>("Latitude")
+                        .HasColumnType("decimal(10, 7)");
+
+                    b.Property<string>("LocationName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<decimal?>("Longitude")
+                        .HasColumnType("decimal(10, 7)");
 
                     b.Property<string>("Status")
                         .IsRequired()
+                        .ValueGeneratedOnAdd()
                         .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("ACTIVE");
 
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("nvarchar(150)");
+                    b.Property<int?>("TaggedStoreId")
+                        .HasColumnType("int");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -328,9 +365,16 @@ namespace Doosii.DAL.Migrations
 
                     b.HasIndex("CreatedAt");
 
-                    b.HasIndex("Status");
+                    b.HasIndex("Latitude");
 
-                    b.ToTable("SpotSharingPosts", "forum");
+                    b.HasIndex("Longitude");
+
+                    b.HasIndex("TaggedStoreId");
+
+                    b.ToTable("SpotSharingPosts", "forum", t =>
+                        {
+                            t.HasCheckConstraint("CK_SpotSharingPosts_Status", "[Status] IN ('ACTIVE','HIDDEN')");
+                        });
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.MerchantProfile", b =>
@@ -1218,6 +1262,17 @@ namespace Doosii.DAL.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Doosii.DAL.Models.Forum.SpotImage", b =>
+                {
+                    b.HasOne("Doosii.DAL.Models.Forum.SpotSharingPost", "SpotPost")
+                        .WithMany("Images")
+                        .HasForeignKey("SpotPostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("SpotPost");
+                });
+
             modelBuilder.Entity("Doosii.DAL.Models.Forum.SpotSharingPost", b =>
                 {
                     b.HasOne("Doosii.DAL.Models.User", "Author")
@@ -1226,7 +1281,14 @@ namespace Doosii.DAL.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Doosii.DAL.Models.Store.Store", "TaggedStore")
+                        .WithMany()
+                        .HasForeignKey("TaggedStoreId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Author");
+
+                    b.Navigation("TaggedStore");
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.MerchantProfile", b =>
@@ -1442,6 +1504,11 @@ namespace Doosii.DAL.Migrations
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Forum.PassPost", b =>
+                {
+                    b.Navigation("Images");
+                });
+
+            modelBuilder.Entity("Doosii.DAL.Models.Forum.SpotSharingPost", b =>
                 {
                     b.Navigation("Images");
                 });
