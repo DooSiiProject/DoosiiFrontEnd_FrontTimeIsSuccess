@@ -31,6 +31,8 @@ builder.Services.AddScoped<ISpotSharingService, SpotSharingService>();
 builder.Services.AddScoped<ICommunityFeedService, CommunityFeedService>();
 builder.Services.AddScoped<ICommentService, CommentService>();
 builder.Services.AddScoped<IReactionService, ReactionService>();
+builder.Services.AddScoped<IPostReportService, PostReportService>();
+builder.Services.AddScoped<IChatService, ChatService>();
 
 // Services từ Track 2 (Wee)
 builder.Services.AddScoped<IEmailService, EmailService>();
@@ -177,5 +179,6 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapHub<Doosii.BLL.Hubs.NotificationHub>("/hubs/notifications");
+app.MapHub<Doosii.BLL.Hubs.ChatHub>("/hubs/chat");
 
 app.Run();

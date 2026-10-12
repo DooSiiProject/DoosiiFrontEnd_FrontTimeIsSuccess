@@ -36,6 +36,10 @@ namespace Doosii.DAL.Data
         public DbSet<Reaction> Reactions { get; set; }
         public DbSet<PostReport> PostReports { get; set; }
 
+        // Chat Module (Track 1 - Tri)
+        public DbSet<Conversation> Conversations { get; set; }
+        public DbSet<ChatMessage> ChatMessages { get; set; }
+
         // Order & Escrow Module (Track 2 - Wee)
         public DbSet<Order> Orders { get; set; }
         public DbSet<OrderItem> OrderItems { get; set; }
@@ -365,18 +369,41 @@ namespace Doosii.DAL.Data
                 entity.HasIndex(r => r.ReactionType);
             });
 
-            // Forum schema - PostReport (placeholder)
+            // Forum schema - PostReport
             modelBuilder.Entity<PostReport>(entity =>
             {
-                entity.ToTable("PostReports", "forum");
+                entity.ToTable("PostReports", "forum", t =>
+                {
+                    t.HasCheckConstraint("CK_PostReports_Reason",
+                        "[Reason] IN ('SCAM','COUNTERFEIT','OFFENSIVE','PROHIBITED_CONTENT','OTHER')");
+                    t.HasCheckConstraint("CK_PostReports_Status",
+                        "[Status] IN ('PENDING','REVIEWED','DISMISSED','ACTION_TAKEN')");
+                    t.HasCheckConstraint("CK_PostReports_PostType",
+                        "[PostType] IN ('PASS','SPOT')");
+                });
 
-                entity.HasOne(pr => pr.ReportedByUser)
+                entity.Property(pr => pr.Status)
+                      .HasDefaultValue("PENDING");
+
+                entity.HasOne(pr => pr.Reporter)
                       .WithMany()
-                      .HasForeignKey(pr => pr.ReportedByUserId)
+                      .HasForeignKey(pr => pr.ReporterId)
                       .OnDelete(DeleteBehavior.Restrict);
 
+                entity.HasOne(pr => pr.ReviewedByAdmin)
+                      .WithMany()
+                      .HasForeignKey(pr => pr.ReviewedByAdminId)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(pr => pr.PostId);
+                entity.HasIndex(pr => pr.ReporterId);
                 entity.HasIndex(pr => pr.Status);
-                entity.HasIndex(pr => new { pr.PostType, pr.PostId });
+                entity.HasIndex(pr => pr.CreatedAt);
+
+                // Unique index: moi user chi co 1 report PENDING cho moi post
+                entity.HasIndex(pr => new { pr.PostId, pr.PostType, pr.ReporterId })
+                      .HasFilter("[Status] = 'PENDING'")
+                      .IsUnique();
             });
 
             // Store schema - StoreReview
@@ -405,7 +432,72 @@ namespace Doosii.DAL.Data
                 entity.HasIndex(r => new { r.StoreId, r.UserId })
                       .IsUnique();
             });
+
+            // Forum schema - Conversation (1-1 Chat)
+            modelBuilder.Entity<Conversation>(entity =>
+            {
+                entity.ToTable("Conversations", "forum");
+
+                entity.HasOne(c => c.Buyer)
+                      .WithMany()
+                      .HasForeignKey(c => c.BuyerId)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(c => c.Seller)
+                      .WithMany()
+                      .HasForeignKey(c => c.SellerId)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(c => c.Product)
+                      .WithMany()
+                      .HasForeignKey(c => c.ProductId)
+                      .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasIndex(c => c.BuyerId);
+                entity.HasIndex(c => c.SellerId);
+                entity.HasIndex(c => c.ProductId);
+                entity.HasIndex(c => c.LastMessageAt);
+
+                // Unique: mot cap buyer-seller-product chi co 1 conversation
+                entity.HasIndex(c => new { c.BuyerId, c.SellerId, c.ProductId })
+                      .IsUnique();
+
+                entity.Property(c => c.IsClosed).HasDefaultValue(false);
+                entity.Property(c => c.LastMessageAt).HasDefaultValueSql("GETUTCDATE()");
+            });
+
+            // Forum schema - ChatMessage
+            modelBuilder.Entity<ChatMessage>(entity =>
+            {
+                entity.ToTable("ChatMessages", "forum", t =>
+                {
+                    t.HasCheckConstraint("CK_ChatMessages_MessageType",
+                        "[MessageType] IN ('TEXT','PRODUCT_CARD','SYSTEM')");
+                });
+
+                entity.HasOne(m => m.Conversation)
+                      .WithMany(c => c.Messages)
+                      .HasForeignKey(m => m.ConversationId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(m => m.Sender)
+                      .WithMany()
+                      .HasForeignKey(m => m.SenderId)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(m => m.Product)
+                      .WithMany()
+                      .HasForeignKey(m => m.ProductId)
+                      .OnDelete(DeleteBehavior.SetNull);
+
+                entity.HasIndex(m => m.ConversationId);
+                entity.HasIndex(m => m.SentAt);
+
+                entity.Property(m => m.MessageType).HasDefaultValue("TEXT");
+                entity.Property(m => m.IsRead).HasDefaultValue(false);
+                entity.Property(m => m.IsDeleted).HasDefaultValue(false);
+            });
+
         }
     }
 }
-

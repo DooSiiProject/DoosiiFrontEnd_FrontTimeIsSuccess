@@ -1,3 +1,5 @@
+using Doosii.BLL.Exceptions;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Doosii.BLL.Common;
@@ -12,10 +14,12 @@ namespace Doosii.API.Controllers
     public class AdminController : ControllerBase
     {
         private readonly IAdminService _adminService;
+        private readonly IPostReportService _postReportService;
 
-        public AdminController(IAdminService adminService)
+        public AdminController(IAdminService adminService, IPostReportService postReportService)
         {
             _adminService = adminService;
+            _postReportService = postReportService;
         }
 
         /// <summary>
@@ -243,6 +247,68 @@ namespace Doosii.API.Controllers
             catch (Exception ex)
             {
                 return StatusCode(500, ApiResponse<AdminAnalyticsResponse>.ErrorResponse("Đã xảy ra lỗi máy chủ nội bộ.", new List<string> { ex.Message }));
+            }
+        }
+
+        // =========================================================================
+        // FORUM POST REPORTS & MODERATION QUEUE (Track 1 - Tri)
+        // =========================================================================
+
+        /// <summary>
+        /// Lay danh sach moderation queue bao cao bai viet Forum.
+        /// Chi danh cho Admin.
+        /// GET /api/admin/reports
+        /// </summary>
+        [HttpGet("reports")]
+        public async Task<IActionResult> GetReportsQueue([FromQuery] PostReportQuery query)
+        {
+            try
+            {
+                var result = await _postReportService.GetReportsQueueAsync(query);
+                return Ok(Doosii.BLL.DTOs.ApiResponse.Ok(result, "Moderation queue retrieved successfully"));
+            }
+            catch (ServiceException ex)
+            {
+                return StatusCode(ex.StatusCode, Doosii.BLL.DTOs.ApiResponse.Fail(ex.Message, new List<string> { ex.ErrorCode }));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, Doosii.BLL.DTOs.ApiResponse.Fail("An unexpected error occurred", new List<string> { ex.Message }));
+            }
+        }
+
+        /// <summary>
+        /// Xu ly bao cao bai viet Forum (DISMISS, HIDE_POST, DELETE_POST, BAN_AUTHOR).
+        /// Chi danh cho Admin.
+        /// PUT /api/admin/reports/{reportId}/resolve
+        /// </summary>
+        [HttpPut("reports/{reportId:int}/resolve")]
+        public async Task<IActionResult> ResolveReport(int reportId, [FromBody] ResolvePostReportRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                var errors = ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
+                return BadRequest(Doosii.BLL.DTOs.ApiResponse.Fail("Invalid request data", errors));
+            }
+
+            var adminIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(adminIdClaim) || !int.TryParse(adminIdClaim, out int adminId))
+            {
+                return Unauthorized(Doosii.BLL.DTOs.ApiResponse.Fail("User is not authenticated", new List<string> { "UNAUTHORIZED" }));
+            }
+
+            try
+            {
+                var result = await _postReportService.ResolveReportAsync(reportId, adminId, request);
+                return Ok(Doosii.BLL.DTOs.ApiResponse.Ok(result, "Report resolved successfully"));
+            }
+            catch (ServiceException ex)
+            {
+                return StatusCode(ex.StatusCode, Doosii.BLL.DTOs.ApiResponse.Fail(ex.Message, new List<string> { ex.ErrorCode }));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, Doosii.BLL.DTOs.ApiResponse.Fail("An unexpected error occurred", new List<string> { ex.Message }));
             }
         }
     }

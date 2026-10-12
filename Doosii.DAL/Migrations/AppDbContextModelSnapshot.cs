@@ -61,6 +61,64 @@ namespace Doosii.DAL.Migrations
                     b.ToTable("EmailOtps");
                 });
 
+            modelBuilder.Entity("Doosii.DAL.Models.Forum.ChatMessage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<int>("ConversationId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("IsRead")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("MessageType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("TEXT");
+
+                    b.Property<int?>("ProductId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SenderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("SentAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConversationId");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("SenderId");
+
+                    b.HasIndex("SentAt");
+
+                    b.ToTable("ChatMessages", "forum", t =>
+                        {
+                            t.HasCheckConstraint("CK_ChatMessages_MessageType", "[MessageType] IN ('TEXT','PRODUCT_CARD','SYSTEM')");
+                        });
+                });
+
             modelBuilder.Entity("Doosii.DAL.Models.Forum.Comment", b =>
                 {
                     b.Property<int>("Id")
@@ -105,6 +163,56 @@ namespace Doosii.DAL.Migrations
                     b.HasIndex("PostId");
 
                     b.ToTable("Comments", "forum");
+                });
+
+            modelBuilder.Entity("Doosii.DAL.Models.Forum.Conversation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BuyerId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsClosed")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<DateTime>("LastMessageAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<int?>("ProductId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SellerId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BuyerId");
+
+                    b.HasIndex("LastMessageAt");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("SellerId");
+
+                    b.HasIndex("BuyerId", "SellerId", "ProductId")
+                        .IsUnique()
+                        .HasFilter("[ProductId] IS NOT NULL");
+
+                    b.ToTable("Conversations", "forum");
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Forum.PassPost", b =>
@@ -216,42 +324,74 @@ namespace Doosii.DAL.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("AdminNote")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("EvidenceUrlsJson")
+                        .HasMaxLength(3000)
+                        .HasColumnType("nvarchar(3000)");
 
                     b.Property<int>("PostId")
                         .HasColumnType("int");
 
                     b.Property<string>("PostType")
                         .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
 
                     b.Property<string>("Reason")
                         .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
 
-                    b.Property<int>("ReportedByUserId")
+                    b.Property<int>("ReporterId")
                         .HasColumnType("int");
 
-                    b.Property<DateTime?>("ResolvedAt")
+                    b.Property<DateTime?>("ReviewedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<int?>("ReviewedByAdminId")
+                        .HasColumnType("int");
 
                     b.Property<string>("Status")
                         .IsRequired()
+                        .ValueGeneratedOnAdd()
                         .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("PENDING");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ReportedByUserId");
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("PostId");
+
+                    b.HasIndex("ReporterId");
+
+                    b.HasIndex("ReviewedByAdminId");
 
                     b.HasIndex("Status");
 
-                    b.HasIndex("PostType", "PostId");
+                    b.HasIndex("PostId", "PostType", "ReporterId")
+                        .IsUnique()
+                        .HasFilter("[Status] = 'PENDING'");
 
-                    b.ToTable("PostReports", "forum");
+                    b.ToTable("PostReports", "forum", t =>
+                        {
+                            t.HasCheckConstraint("CK_PostReports_PostType", "[PostType] IN ('PASS','SPOT')");
+
+                            t.HasCheckConstraint("CK_PostReports_Reason", "[Reason] IN ('SCAM','COUNTERFEIT','OFFENSIVE','PROHIBITED_CONTENT','OTHER')");
+
+                            t.HasCheckConstraint("CK_PostReports_Status", "[Status] IN ('PENDING','REVIEWED','DISMISSED','ACTION_TAKEN')");
+                        });
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Forum.Reaction", b =>
@@ -1213,6 +1353,32 @@ namespace Doosii.DAL.Migrations
                     b.ToTable("Users", "auth");
                 });
 
+            modelBuilder.Entity("Doosii.DAL.Models.Forum.ChatMessage", b =>
+                {
+                    b.HasOne("Doosii.DAL.Models.Forum.Conversation", "Conversation")
+                        .WithMany("Messages")
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Doosii.DAL.Models.Store.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Doosii.DAL.Models.User", "Sender")
+                        .WithMany()
+                        .HasForeignKey("SenderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Conversation");
+
+                    b.Navigation("Product");
+
+                    b.Navigation("Sender");
+                });
+
             modelBuilder.Entity("Doosii.DAL.Models.Forum.Comment", b =>
                 {
                     b.HasOne("Doosii.DAL.Models.User", "Author")
@@ -1229,6 +1395,32 @@ namespace Doosii.DAL.Migrations
                     b.Navigation("Author");
 
                     b.Navigation("ParentComment");
+                });
+
+            modelBuilder.Entity("Doosii.DAL.Models.Forum.Conversation", b =>
+                {
+                    b.HasOne("Doosii.DAL.Models.User", "Buyer")
+                        .WithMany()
+                        .HasForeignKey("BuyerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Doosii.DAL.Models.Store.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Doosii.DAL.Models.User", "Seller")
+                        .WithMany()
+                        .HasForeignKey("SellerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Buyer");
+
+                    b.Navigation("Product");
+
+                    b.Navigation("Seller");
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Forum.PassPost", b =>
@@ -1255,13 +1447,20 @@ namespace Doosii.DAL.Migrations
 
             modelBuilder.Entity("Doosii.DAL.Models.Forum.PostReport", b =>
                 {
-                    b.HasOne("Doosii.DAL.Models.User", "ReportedByUser")
+                    b.HasOne("Doosii.DAL.Models.User", "Reporter")
                         .WithMany()
-                        .HasForeignKey("ReportedByUserId")
+                        .HasForeignKey("ReporterId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("ReportedByUser");
+                    b.HasOne("Doosii.DAL.Models.User", "ReviewedByAdmin")
+                        .WithMany()
+                        .HasForeignKey("ReviewedByAdminId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Reporter");
+
+                    b.Navigation("ReviewedByAdmin");
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Forum.Reaction", b =>
@@ -1519,6 +1718,11 @@ namespace Doosii.DAL.Migrations
             modelBuilder.Entity("Doosii.DAL.Models.Forum.Comment", b =>
                 {
                     b.Navigation("Replies");
+                });
+
+            modelBuilder.Entity("Doosii.DAL.Models.Forum.Conversation", b =>
+                {
+                    b.Navigation("Messages");
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Forum.PassPost", b =>
