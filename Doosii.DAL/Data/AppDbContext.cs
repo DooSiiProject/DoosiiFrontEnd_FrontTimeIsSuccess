@@ -312,33 +312,57 @@ namespace Doosii.DAL.Data
                 entity.HasIndex(i => new { i.SpotPostId, i.DisplayOrder });
             });
 
-            // Forum schema - Comment (placeholder)
+            // Forum schema - Comment
             modelBuilder.Entity<Comment>(entity =>
             {
                 entity.ToTable("Comments", "forum");
+
+                entity.Property(c => c.Content)
+                      .HasMaxLength(1000)
+                      .IsRequired();
+
+                entity.Property(c => c.IsDeleted)
+                      .HasDefaultValue(false);
 
                 entity.HasOne(c => c.Author)
                       .WithMany()
                       .HasForeignKey(c => c.AuthorId)
                       .OnDelete(DeleteBehavior.Restrict);
 
+                entity.HasOne(c => c.ParentComment)
+                      .WithMany(p => p.Replies)
+                      .HasForeignKey(c => c.ParentCommentId)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(c => c.PostId);
                 entity.HasIndex(c => c.AuthorId);
-                entity.HasIndex(c => new { c.PostType, c.PostId });
+                entity.HasIndex(c => c.ParentCommentId);
                 entity.HasIndex(c => c.CreatedAt);
             });
 
-            // Forum schema - Reaction (placeholder)
+            // Forum schema - Reaction
             modelBuilder.Entity<Reaction>(entity =>
             {
-                entity.ToTable("Reactions", "forum");
+                entity.ToTable("Reactions", "forum", t =>
+                {
+                    t.HasCheckConstraint("CK_Reactions_ReactionType", "[ReactionType] IN ('LIKE', 'HEART')");
+                });
+
+                entity.Property(r => r.ReactionType)
+                      .HasMaxLength(20)
+                      .IsRequired();
 
                 entity.HasOne(r => r.User)
                       .WithMany()
                       .HasForeignKey(r => r.UserId)
                       .OnDelete(DeleteBehavior.Restrict);
 
-                entity.HasIndex(r => new { r.UserId, r.PostType, r.PostId })
+                entity.HasIndex(r => new { r.PostId, r.UserId })
                       .IsUnique();
+
+                entity.HasIndex(r => r.PostId);
+                entity.HasIndex(r => r.UserId);
+                entity.HasIndex(r => r.ReactionType);
             });
 
             // Forum schema - PostReport (placeholder)

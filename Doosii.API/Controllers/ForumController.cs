@@ -13,14 +13,24 @@ namespace Doosii.API.Controllers
     {
         private readonly IPassPostService _passPostService;
         private readonly ICommunityFeedService _feedService;
+        private readonly ICommentService _commentService;
+        private readonly IReactionService _reactionService;
 
         public ForumController(
             IPassPostService passPostService,
-            ICommunityFeedService feedService)
+            ICommunityFeedService feedService,
+            ICommentService commentService,
+            IReactionService reactionService)
         {
             _passPostService = passPostService;
             _feedService = feedService;
+            _commentService = commentService;
+            _reactionService = reactionService;
         }
+
+        // =========================================================================
+        // COMMUNITY FEED
+        // =========================================================================
 
         /// <summary>
         /// Lay danh sach Community Feed (tong hop PassPost va SpotSharingPost).
@@ -51,6 +61,10 @@ namespace Doosii.API.Controllers
                 return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string> { ex.Message }));
             }
         }
+
+        // =========================================================================
+        // PASS POSTS
+        // =========================================================================
 
         /// <summary>
         /// Tao moi bai PassPost tren dien dan voi anh (1-5 anh) qua multipart/form-data.
@@ -117,6 +131,163 @@ namespace Doosii.API.Controllers
                 return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string> { ex.Message }));
             }
         }
+
+        // =========================================================================
+        // COMMENTS
+        // =========================================================================
+
+        /// <summary>
+        /// Tao binh luan moi tren bai viet (ho tro comment goc hoac reply cap 1).
+        /// Bat buoc dang nhap.
+        /// </summary>
+        [HttpPost("posts/{postId:int}/comments")]
+        [Authorize]
+        public async Task<IActionResult> CreateComment(int postId, [FromBody] CreateCommentRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ApiResponse.Fail("Du lieu khong hop le.", GetModelErrors()));
+            }
+
+            var userId = GetCurrentUserId();
+            if (userId == null)
+            {
+                return Unauthorized(ApiResponse.Fail("Token khong hop le hoac nguoi dung chua dang nhap.", new List<string> { "UNAUTHORIZED" }));
+            }
+
+            try
+            {
+                var result = await _commentService.CreateCommentAsync(postId, userId.Value, request);
+                return StatusCode(201, ApiResponse.Ok(result, "Comment created successfully"));
+            }
+            catch (ServiceException ex)
+            {
+                return StatusCode(ex.StatusCode, ApiResponse.Fail(ex.Message, new List<string> { ex.ErrorCode }));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string> { ex.Message }));
+            }
+        }
+
+        /// <summary>
+        /// Lay danh sach binh luan cua mot bai viet theo dang cay phan cap (Root comments -> Replies).
+        /// Endpoint public.
+        /// </summary>
+        [HttpGet("posts/{postId:int}/comments")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetComments(int postId)
+        {
+            try
+            {
+                var result = await _commentService.GetCommentsByPostIdAsync(postId);
+                return Ok(ApiResponse.Ok(result, "Lay danh sach binh luan thanh cong."));
+            }
+            catch (ServiceException ex)
+            {
+                return StatusCode(ex.StatusCode, ApiResponse.Fail(ex.Message, new List<string> { ex.ErrorCode }));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string> { ex.Message }));
+            }
+        }
+
+        /// <summary>
+        /// Xoa mem binh luan (IsDeleted = true).
+        /// Chi Author hoac Admin duoc phep xoa.
+        /// </summary>
+        [HttpDelete("comments/{commentId:int}")]
+        [Authorize]
+        public async Task<IActionResult> DeleteComment(int commentId)
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null)
+            {
+                return Unauthorized(ApiResponse.Fail("Token khong hop le hoac nguoi dung chua dang nhap.", new List<string> { "UNAUTHORIZED" }));
+            }
+
+            try
+            {
+                await _commentService.DeleteCommentAsync(commentId, userId.Value);
+                return Ok(ApiResponse.Ok(new { }, "Binh luan da duoc xoa thanh cong."));
+            }
+            catch (ServiceException ex)
+            {
+                return StatusCode(ex.StatusCode, ApiResponse.Fail(ex.Message, new List<string> { ex.ErrorCode }));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string> { ex.Message }));
+            }
+        }
+
+        // =========================================================================
+        // REACTIONS
+        // =========================================================================
+
+        /// <summary>
+        /// Tha cam xuc hoac cap nhat / huy cam xuc tren bai viet (Toggle reaction).
+        /// Request: ReactionType: LIKE hoac HEART.
+        /// Bat buoc dang nhap.
+        /// </summary>
+        [HttpPost("posts/{postId:int}/reactions")]
+        [Authorize]
+        public async Task<IActionResult> ToggleReaction(int postId, [FromBody] CreateReactionRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ApiResponse.Fail("Du lieu khong hop le.", GetModelErrors()));
+            }
+
+            var userId = GetCurrentUserId();
+            if (userId == null)
+            {
+                return Unauthorized(ApiResponse.Fail("Token khong hop le hoac nguoi dung chua dang nhap.", new List<string> { "UNAUTHORIZED" }));
+            }
+
+            try
+            {
+                var result = await _reactionService.ToggleReactionAsync(postId, userId.Value, request);
+                return Ok(ApiResponse.Ok(result, "Reaction processed successfully"));
+            }
+            catch (ServiceException ex)
+            {
+                return StatusCode(ex.StatusCode, ApiResponse.Fail(ex.Message, new List<string> { ex.ErrorCode }));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string> { ex.Message }));
+            }
+        }
+
+        /// <summary>
+        /// Lay thong tin tong so Like va Heart tren bai viet.
+        /// Endpoint public. Neu da dang nhap, tra kem Reaction cua current user.
+        /// </summary>
+        [HttpGet("posts/{postId:int}/reactions")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetReactions(int postId)
+        {
+            try
+            {
+                var userId = GetCurrentUserId();
+                var result = await _reactionService.GetReactionsSummaryAsync(postId, userId);
+                return Ok(ApiResponse.Ok(result, "Lay thong tin reaction thanh cong."));
+            }
+            catch (ServiceException ex)
+            {
+                return StatusCode(ex.StatusCode, ApiResponse.Fail(ex.Message, new List<string> { ex.ErrorCode }));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string> { ex.Message }));
+            }
+        }
+
+        // =========================================================================
+        // PRIVATE HELPERS
+        // =========================================================================
 
         private int? GetCurrentUserId()
         {

@@ -74,22 +74,22 @@ namespace Doosii.DAL.Migrations
 
                     b.Property<string>("Content")
                         .IsRequired()
-                        .HasMaxLength(2000)
-                        .HasColumnType("nvarchar(2000)");
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
 
                     b.Property<int?>("ParentCommentId")
                         .HasColumnType("int");
 
                     b.Property<int>("PostId")
                         .HasColumnType("int");
-
-                    b.Property<string>("PostType")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
@@ -100,7 +100,9 @@ namespace Doosii.DAL.Migrations
 
                     b.HasIndex("CreatedAt");
 
-                    b.HasIndex("PostType", "PostId");
+                    b.HasIndex("ParentCommentId");
+
+                    b.HasIndex("PostId");
 
                     b.ToTable("Comments", "forum");
                 });
@@ -266,11 +268,6 @@ namespace Doosii.DAL.Migrations
                     b.Property<int>("PostId")
                         .HasColumnType("int");
 
-                    b.Property<string>("PostType")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
                     b.Property<string>("ReactionType")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -281,10 +278,19 @@ namespace Doosii.DAL.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId", "PostType", "PostId")
+                    b.HasIndex("PostId");
+
+                    b.HasIndex("ReactionType");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("PostId", "UserId")
                         .IsUnique();
 
-                    b.ToTable("Reactions", "forum");
+                    b.ToTable("Reactions", "forum", t =>
+                        {
+                            t.HasCheckConstraint("CK_Reactions_ReactionType", "[ReactionType] IN ('LIKE', 'HEART')");
+                        });
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Forum.SpotImage", b =>
@@ -1215,7 +1221,14 @@ namespace Doosii.DAL.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Doosii.DAL.Models.Forum.Comment", "ParentComment")
+                        .WithMany("Replies")
+                        .HasForeignKey("ParentCommentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Author");
+
+                    b.Navigation("ParentComment");
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Forum.PassPost", b =>
@@ -1501,6 +1514,11 @@ namespace Doosii.DAL.Migrations
                     b.Navigation("Store");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Doosii.DAL.Models.Forum.Comment", b =>
+                {
+                    b.Navigation("Replies");
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Forum.PassPost", b =>

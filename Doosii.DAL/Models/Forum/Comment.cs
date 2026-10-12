@@ -1,11 +1,10 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Doosii.DAL.Models.Forum
 {
     /// <summary>
-    /// Binh luan cua nguoi dung duoi bai dang Forum.
-    /// Placeholder cho task tuong lai.
+    /// Binh luan trong Forum (ho tro toi da 2 cap: root comment va reply).
     /// Schema: forum.
     /// </summary>
     [Table("Comments", Schema = "forum")]
@@ -15,31 +14,46 @@ namespace Doosii.DAL.Models.Forum
         [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
         public int Id { get; set; }
 
+        /// <summary>
+        /// ID cua bai viet Forum (PassPost hoac SpotSharingPost).
+        /// </summary>
+        [Required]
+        public int PostId { get; set; }
+
+        /// <summary>
+        /// ID tac gia binh luan (FK den auth.Users).
+        /// </summary>
         [Required]
         public int AuthorId { get; set; }
 
         /// <summary>
-        /// Loai bai dang: PassPost | SpotSharingPost.
+        /// ID binh luan cha. Null neu la comment goc (cap 1).
+        /// </summary>
+        public int? ParentCommentId { get; set; }
+
+        /// <summary>
+        /// Noi dung binh luan, bat buoc, toi da 1000 ky tu.
         /// </summary>
         [Required]
-        [MaxLength(50)]
-        public string PostType { get; set; } = string.Empty;
-
-        [Required]
-        public int PostId { get; set; }
-
-        [Required]
-        [MaxLength(2000)]
+        [MaxLength(1000)]
         public string Content { get; set; } = string.Empty;
-
-        public int? ParentCommentId { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public DateTime? UpdatedAt { get; set; }
 
-        // Navigation
+        /// <summary>
+        /// Danh dau xoa mem (soft delete). Mac dinh false.
+        /// </summary>
+        public bool IsDeleted { get; set; } = false;
+
+        // Navigation properties
         [ForeignKey(nameof(AuthorId))]
         public User Author { get; set; } = null!;
+
+        [ForeignKey(nameof(ParentCommentId))]
+        public Comment? ParentComment { get; set; }
+
+        public ICollection<Comment> Replies { get; set; } = new List<Comment>();
     }
 }

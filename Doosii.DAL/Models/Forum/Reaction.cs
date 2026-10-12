@@ -1,11 +1,10 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Doosii.DAL.Models.Forum
 {
     /// <summary>
-    /// Cam xuc (reaction / like) cua nguoi dung tren bai dang Forum.
-    /// Placeholder cho task tuong lai.
+    /// Cam xuc (LIKE / HEART) tren bai viet Forum.
     /// Schema: forum.
     /// </summary>
     [Table("Reactions", Schema = "forum")]
@@ -15,21 +14,20 @@ namespace Doosii.DAL.Models.Forum
         [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
         public int Id { get; set; }
 
-        [Required]
-        public int UserId { get; set; }
-
         /// <summary>
-        /// Loai bai dang: PassPost | SpotSharingPost.
+        /// ID bai viet Forum.
         /// </summary>
-        [Required]
-        [MaxLength(50)]
-        public string PostType { get; set; } = string.Empty;
-
         [Required]
         public int PostId { get; set; }
 
         /// <summary>
-        /// Loai reaction: LIKE | LOVE | HAHA | SAD | ANGRY.
+        /// ID nguoi dung da tha cam xuc (FK den auth.Users).
+        /// </summary>
+        [Required]
+        public int UserId { get; set; }
+
+        /// <summary>
+        /// Loai reaction: LIKE hoac HEART.
         /// </summary>
         [Required]
         [MaxLength(20)]
