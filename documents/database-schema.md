@@ -5,6 +5,7 @@
 - **Database**: `DoosiiDb`
 - **Design Pattern**: Single Database with **Schema Separation** to maintain modularity and ACID transactional integrity.
 - **Schemas**: `auth`, `store`, `order`, `forum`, `notification`.
+  - *Ghi chú triển khai EF Core*: Các schema `store`, `forum`, `notification` và thực thể chính của `auth` (`Users`, `MerchantProfiles`) được ánh xạ trực tiếp vào database schema tương ứng. Các bảng thuộc domain `order` (`Orders`, `OrderItems`, `EscrowTransactions`, `PaymentLogs`, `Disputes`, `WithdrawalRequests`) và token/OTP (`RefreshTokens`, `EmailOtps`) được cấu hình ở default schema (`dbo`) để đảm bảo toàn vẹn liên kết khóa ngoại liên schema và tối ưu độ ổn định khi chạy migration.
 
 ---
 

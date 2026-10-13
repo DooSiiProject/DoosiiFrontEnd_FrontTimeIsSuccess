@@ -88,7 +88,7 @@ All tables reside within `DoosiiDb`, organized cleanly into logical database sch
   - `ChatMessages` (`Id`, `ConversationId`, `SenderId`, `Content`, `ProductId`, `MessageType` [TEXT, PRODUCT_CARD, SYSTEM], `SentAt`, `IsRead`, `IsDeleted`)
 - **`notification` schema**:
   - `Notifications` (`Id`, `UserId`, `Title`, `Message`, `Type`, `TargetUrl`, `IsRead`, `CreatedAt`)
-  - `UserConnections` (`Id`, `UserId`, `ConnectionId`, `LastActiveAt`)
+  - *Lưu ý kiến trúc SignalR*: Kết nối Client WebSocket được quản lý theo cơ chế **In-Memory Groups** (`user_{userId}`, `broadcast_channel`, `conversation_{conversationId}`) để tối ưu I/O và tránh nghẽn DB (sẵn sàng tích hợp Redis Backplane khi mở rộng multi-node, không lưu ConnectionId tạm vào SQL Server).
 
 ---
 

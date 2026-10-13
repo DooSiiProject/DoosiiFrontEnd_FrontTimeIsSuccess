@@ -206,6 +206,29 @@ namespace Doosii.BLL.Hubs
             }
         }
 
+        /// <summary>
+        /// Client thong bao trang thai typing (dang nhap tin nhan).
+        /// Phat su kien UserTyping cho thanh vien con lai trong phong chat.
+        /// </summary>
+        public async Task SendTyping(int conversationId, bool isTyping)
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null)
+            {
+                await Clients.Caller.SendAsync("ChatError", new { Code = "UNAUTHORIZED", Message = "Not authenticated" });
+                return;
+            }
+
+            var typingDto = new UserTypingDto
+            {
+                ConversationId = conversationId,
+                UserId = userId.Value,
+                IsTyping = isTyping
+            };
+
+            await Clients.OthersInGroup($"conversation_{conversationId}").SendAsync("UserTyping", typingDto);
+        }
+
         // =====================================================================
         // PRIVATE HELPERS
         // =====================================================================

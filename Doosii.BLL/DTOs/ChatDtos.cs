@@ -97,4 +97,11 @@ namespace Doosii.BLL.DTOs
         public int UnreadCount { get; set; }
         public int MarkedCount { get; set; }
     }
+
+    public class UserTypingDto
+    {
+        public int ConversationId { get; set; }
+        public int UserId { get; set; }
+        public bool IsTyping { get; set; }
+    }
 }
