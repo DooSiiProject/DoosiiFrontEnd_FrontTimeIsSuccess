@@ -4,6 +4,8 @@ namespace Doosii.BLL.DTOs
 {
     public class CreateAnnouncementRequest
     {
+        [Required] public Guid? ClientRequestId { get; set; }
+        [Required] public decimal? ExpectedFee { get; set; }
         [Required(ErrorMessage = "Mã cửa hàng là bắt buộc.")]
         public int StoreId { get; set; }
 
@@ -31,6 +33,7 @@ namespace Doosii.BLL.DTOs
     public class AnnouncementResponse
     {
         public int Id { get; set; }
+        public Guid? ClientRequestId { get; set; }
         public int StoreId { get; set; }
         public string StoreName { get; set; } = string.Empty;
         public string StoreAddress { get; set; } = string.Empty;
@@ -50,3 +53,5 @@ namespace Doosii.BLL.DTOs
         public string? QrCodeUrl { get; set; }
     }
 }
+
+namespace Doosii.BLL.DTOs { public class AnnouncementOptions { public decimal BroadcastFee { get; set; } public int DailyLimit { get; set; } public int RemainingToday { get; set; } public DateTime ResetsAt { get; set; } } }

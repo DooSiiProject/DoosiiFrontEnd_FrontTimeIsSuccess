@@ -1,487 +1,112 @@
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Doosii.BLL.DTOs;
 using Doosii.BLL.Exceptions;
 using Doosii.BLL.Interfaces;
 using Doosii.DAL.Data;
 using Doosii.DAL.Models.Forum;
+using Doosii.DAL.Models.Store;
 
-namespace Doosii.BLL.Services
+namespace Doosii.BLL.Services;
+public class ChatService : IChatService
 {
-    public class ChatService : IChatService
+    private readonly AppDbContext _context;
+    public ChatService(AppDbContext context) { _context = context; }
+    private static ServiceException Fail(int status, string message, string code) => new(status, message, code);
+    private async Task UserAsync(int id) { if (!await _context.Users.AnyAsync(u => u.Id == id && u.Role != "Banned")) throw Fail(403, "Tài khoản không được phép dùng chat.", "CHAT_ACCESS_DENIED"); }
+    private IQueryable<Conversation> Conversations() => _context.Conversations.Include(c => c.Buyer).Include(c => c.Seller).Include(c => c.Product).ThenInclude(p => p!.Images)
+        .Include(c => c.Product).ThenInclude(p => p!.Store).ThenInclude(s => s.Owner).ThenInclude(u => u.MerchantProfile);
+    private IQueryable<ChatMessage> Messages() => _context.ChatMessages.Include(m => m.Sender).Include(m => m.Product).ThenInclude(p => p!.Images)
+        .Include(m => m.Product).ThenInclude(p => p!.Store).ThenInclude(s => s.Owner).ThenInclude(u => u.MerchantProfile);
+    private static bool Public(Product p) => p.IsPublished && p.Store.IsActive && p.Store.Owner.Role == "Shopper" && p.Store.Owner.MerchantProfile?.KycStatus == "APPROVED";
+    public async Task<bool> IsMemberAsync(int conversationId, int userId) { await UserAsync(userId); return await _context.Conversations.AnyAsync(c => c.Id == conversationId && (c.BuyerId == userId || c.SellerId == userId)); }
+    public async Task<ConversationDto> GetConversationAsync(int conversationId, int userId)
     {
-        private readonly AppDbContext _context;
-
-        public ChatService(AppDbContext context)
-        {
-            _context = context;
-        }
-
-        // =====================================================================
-        // CONVERSATION
-        // =====================================================================
-
-        public async Task<ConversationDto> GetOrCreateConversationAsync(int buyerId, int sellerId, int? productId)
-        {
-            if (buyerId == sellerId)
-            {
-                throw new ServiceException(400, "You cannot chat with yourself", "CANNOT_CHAT_WITH_SELF");
-            }
-
-            // Kiem tra seller ton tai
-            var sellerExists = await _context.Users.AnyAsync(u => u.Id == sellerId);
-            if (!sellerExists)
-            {
-                throw new ServiceException(404, "Seller not found", "CONVERSATION_NOT_FOUND");
-            }
-
-            // Neu co productId: kiem tra product ton tai va seller la owner
-            if (productId.HasValue)
-            {
-                var product = await _context.Products
-                    .Include(p => p.Store)
-                    .FirstOrDefaultAsync(p => p.Id == productId.Value);
-
-                if (product == null)
-                {
-                    throw new ServiceException(404, "Product not found", "PRODUCT_NOT_FOUND");
-                }
-
-                if (product.Store.OwnerId != sellerId)
-                {
-                    throw new ServiceException(400, "Seller is not the owner of this product", "PRODUCT_NOT_FOUND");
-                }
-            }
-
-            // Tim conversation da ton tai (buyer, seller, product)
-            var existing = await _context.Conversations
-                .Include(c => c.Buyer)
-                .Include(c => c.Seller)
-                .Include(c => c.Product)
-                    .ThenInclude(p => p != null ? p.Store : null)
-                .Include(c => c.Product)
-                    .ThenInclude(p => p != null ? p.Images : null)
-                .FirstOrDefaultAsync(c =>
-                    c.BuyerId == buyerId &&
-                    c.SellerId == sellerId &&
-                    c.ProductId == productId);
-
-            if (existing != null)
-            {
-                return await BuildConversationDtoAsync(existing, buyerId);
-            }
-
-            // Tao moi
-            var conversation = new Conversation
-            {
-                BuyerId = buyerId,
-                SellerId = sellerId,
-                ProductId = productId,
-                CreatedAt = DateTime.UtcNow,
-                LastMessageAt = DateTime.UtcNow
-            };
-
-            _context.Conversations.Add(conversation);
-            await _context.SaveChangesAsync();
-
-            // Reload voi navigation
-            var created = await _context.Conversations
-                .Include(c => c.Buyer)
-                .Include(c => c.Seller)
-                .Include(c => c.Product)
-                    .ThenInclude(p => p != null ? p.Store : null)
-                .Include(c => c.Product)
-                    .ThenInclude(p => p != null ? p.Images : null)
-                .FirstAsync(c => c.Id == conversation.Id);
-
-            return await BuildConversationDtoAsync(created, buyerId);
-        }
-
-        public async Task<PagedResult<ConversationDto>> GetConversationsAsync(int userId, GetConversationsQuery query)
-        {
-            var queryable = _context.Conversations
-                .Where(c => c.BuyerId == userId || c.SellerId == userId)
-                .AsNoTracking();
-
-            var totalCount = await queryable.CountAsync();
-
-            int page = query.Page < 1 ? 1 : query.Page;
-            int pageSize = query.PageSize < 1 ? 20 : (query.PageSize > 50 ? 50 : query.PageSize);
-
-            var conversations = await queryable
-                .Include(c => c.Buyer)
-                .Include(c => c.Seller)
-                .Include(c => c.Product)
-                    .ThenInclude(p => p != null ? p.Store : null)
-                .Include(c => c.Product)
-                    .ThenInclude(p => p != null ? p.Images : null)
-                .OrderByDescending(c => c.LastMessageAt)
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .ToListAsync();
-
-            var items = new List<ConversationDto>();
-            foreach (var conv in conversations)
-            {
-                items.Add(await BuildConversationDtoAsync(conv, userId));
-            }
-
-            return new PagedResult<ConversationDto>
-            {
-                Items = items,
-                TotalCount = totalCount,
-                Page = page,
-                PageSize = pageSize
-            };
-        }
-
-        // =====================================================================
-        // MESSAGES
-        // =====================================================================
-
-        public async Task<PagedResult<ChatMessageDto>> GetMessagesAsync(int conversationId, int userId, GetMessagesQuery query)
-        {
-            var isMember = await IsMemberAsync(conversationId, userId);
-            if (!isMember)
-            {
-                throw new ServiceException(403, "You are not a member of this conversation", "CHAT_ACCESS_DENIED");
-            }
-
-            int page = query.Page < 1 ? 1 : query.Page;
-            int pageSize = query.PageSize < 1 ? 30 : (query.PageSize > 100 ? 100 : query.PageSize);
-
-            var total = await _context.ChatMessages
-                .Where(m => m.ConversationId == conversationId)
-                .AsNoTracking()
-                .CountAsync();
-
-            var messages = await _context.ChatMessages
-                .Where(m => m.ConversationId == conversationId)
-                .Include(m => m.Sender)
-                .Include(m => m.Product)
-                    .ThenInclude(p => p != null ? p.Store : null)
-                .Include(m => m.Product)
-                    .ThenInclude(p => p != null ? p.Images : null)
-                .OrderBy(m => m.SentAt)
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .AsNoTracking()
-                .ToListAsync();
-
-            var items = messages.Select(m => MapToMessageDto(m)).ToList();
-
-            return new PagedResult<ChatMessageDto>
-            {
-                Items = items,
-                TotalCount = total,
-                Page = page,
-                PageSize = pageSize
-            };
-        }
-
-        public async Task<ChatMessageDto> SendTextMessageAsync(int conversationId, int senderId, string content)
-        {
-            if (string.IsNullOrWhiteSpace(content))
-            {
-                throw new ServiceException(400, "Message content cannot be empty", "INVALID_MESSAGE");
-            }
-
-            if (content.Length > 2000)
-            {
-                throw new ServiceException(400, "Message content cannot exceed 2000 characters", "INVALID_MESSAGE");
-            }
-
-            var conversation = await _context.Conversations.FirstOrDefaultAsync(c => c.Id == conversationId);
-            if (conversation == null)
-            {
-                throw new ServiceException(404, "Conversation not found", "CONVERSATION_NOT_FOUND");
-            }
-
-            if (conversation.IsClosed)
-            {
-                throw new ServiceException(400, "This conversation is closed", "CONVERSATION_CLOSED");
-            }
-
-            if (conversation.BuyerId != senderId && conversation.SellerId != senderId)
-            {
-                throw new ServiceException(403, "You are not a member of this conversation", "CHAT_ACCESS_DENIED");
-            }
-
-            await using var tx = await _context.Database.BeginTransactionAsync();
-            try
-            {
-                var message = new ChatMessage
-                {
-                    ConversationId = conversationId,
-                    SenderId = senderId,
-                    Content = content.Trim(),
-                    MessageType = "TEXT",
-                    SentAt = DateTime.UtcNow,
-                    IsRead = false,
-                    IsDeleted = false
-                };
-
-                _context.ChatMessages.Add(message);
-
-                conversation.LastMessageAt = message.SentAt;
-                conversation.UpdatedAt = message.SentAt;
-
-                await _context.SaveChangesAsync();
-                await tx.CommitAsync();
-
-                // Reload with navigation for DTO
-                var saved = await _context.ChatMessages
-                    .Include(m => m.Sender)
-                    .FirstAsync(m => m.Id == message.Id);
-
-                return MapToMessageDto(saved);
-            }
-            catch
-            {
-                await tx.RollbackAsync();
-                throw;
-            }
-        }
-
-        public async Task<ChatMessageDto> SendProductCardAsync(int conversationId, int senderId, int productId)
-        {
-            var conversation = await _context.Conversations.FirstOrDefaultAsync(c => c.Id == conversationId);
-            if (conversation == null)
-            {
-                throw new ServiceException(404, "Conversation not found", "CONVERSATION_NOT_FOUND");
-            }
-
-            if (conversation.IsClosed)
-            {
-                throw new ServiceException(400, "This conversation is closed", "CONVERSATION_CLOSED");
-            }
-
-            if (conversation.BuyerId != senderId && conversation.SellerId != senderId)
-            {
-                throw new ServiceException(403, "You are not a member of this conversation", "CHAT_ACCESS_DENIED");
-            }
-
-            var product = await _context.Products
-                .Include(p => p.Store)
-                .Include(p => p.Images)
-                .FirstOrDefaultAsync(p => p.Id == productId);
-
-            if (product == null)
-            {
-                throw new ServiceException(404, "Product not found", "PRODUCT_NOT_FOUND");
-            }
-
-            await using var tx = await _context.Database.BeginTransactionAsync();
-            try
-            {
-                var message = new ChatMessage
-                {
-                    ConversationId = conversationId,
-                    SenderId = senderId,
-                    Content = $"[Product: {product.Title}]",
-                    ProductId = productId,
-                    MessageType = "PRODUCT_CARD",
-                    SentAt = DateTime.UtcNow,
-                    IsRead = false,
-                    IsDeleted = false
-                };
-
-                _context.ChatMessages.Add(message);
-
-                conversation.LastMessageAt = message.SentAt;
-                conversation.UpdatedAt = message.SentAt;
-
-                await _context.SaveChangesAsync();
-                await tx.CommitAsync();
-
-                var saved = await _context.ChatMessages
-                    .Include(m => m.Sender)
-                    .Include(m => m.Product)
-                        .ThenInclude(p => p != null ? p.Store : null)
-                    .Include(m => m.Product)
-                        .ThenInclude(p => p != null ? p.Images : null)
-                    .FirstAsync(m => m.Id == message.Id);
-
-                return MapToMessageDto(saved);
-            }
-            catch
-            {
-                await tx.RollbackAsync();
-                throw;
-            }
-        }
-
-        public async Task<ReadStatusDto> MarkMessagesAsReadAsync(int conversationId, int userId)
-        {
-            var isMember = await IsMemberAsync(conversationId, userId);
-            if (!isMember)
-            {
-                throw new ServiceException(403, "You are not a member of this conversation", "CHAT_ACCESS_DENIED");
-            }
-
-            // Danh dau message cua nguoi kia la da doc
-            var unreadMessages = await _context.ChatMessages
-                .Where(m => m.ConversationId == conversationId
-                         && m.SenderId != userId
-                         && !m.IsRead
-                         && !m.IsDeleted)
-                .ToListAsync();
-
-            int markedCount = unreadMessages.Count;
-            foreach (var msg in unreadMessages)
-            {
-                msg.IsRead = true;
-            }
-
-            if (markedCount > 0)
-            {
-                await _context.SaveChangesAsync();
-            }
-
-            int remainingUnread = await _context.ChatMessages
-                .CountAsync(m => m.ConversationId == conversationId
-                              && m.SenderId != userId
-                              && !m.IsRead
-                              && !m.IsDeleted);
-
-            return new ReadStatusDto
-            {
-                ConversationId = conversationId,
-                UnreadCount = remainingUnread,
-                MarkedCount = markedCount
-            };
-        }
-
-        public async Task<bool> IsMemberAsync(int conversationId, int userId)
-        {
-            return await _context.Conversations
-                .AnyAsync(c => c.Id == conversationId && (c.BuyerId == userId || c.SellerId == userId));
-        }
-
-        public async Task<ProductCardDto?> GetProductCardAsync(int productId)
-        {
-            var product = await _context.Products
-                .Include(p => p.Store)
-                .Include(p => p.Images)
-                .AsNoTracking()
-                .FirstOrDefaultAsync(p => p.Id == productId);
-
-            if (product == null) return null;
-
-            return new ProductCardDto
-            {
-                ProductId = product.Id,
-                Title = product.Title,
-                Price = product.Price,
-                Status = product.Status,
-                ThumbnailUrl = product.Images
-                    .OrderBy(i => i.DisplayOrder)
-                    .Select(i => i.ImageUrl)
-                    .FirstOrDefault(),
-                StoreId = product.StoreId,
-                StoreName = product.Store.Name
-            };
-        }
-
-        // =====================================================================
-        // PRIVATE HELPERS
-        // =====================================================================
-
-        private async Task<ConversationDto> BuildConversationDtoAsync(Conversation conversation, int currentUserId)
-        {
-            // Last message preview
-            var lastMsg = await _context.ChatMessages
-                .Include(m => m.Sender)
-                .Where(m => m.ConversationId == conversation.Id && !m.IsDeleted)
-                .OrderByDescending(m => m.SentAt)
-                .FirstOrDefaultAsync();
-
-            // Unread count: messages sent by the other party that are unread
-            var unreadCount = await _context.ChatMessages
-                .CountAsync(m => m.ConversationId == conversation.Id
-                              && m.SenderId != currentUserId
-                              && !m.IsRead
-                              && !m.IsDeleted);
-
-            ProductCardDto? productCard = null;
-            if (conversation.Product != null)
-            {
-                productCard = new ProductCardDto
-                {
-                    ProductId = conversation.Product.Id,
-                    Title = conversation.Product.Title,
-                    Price = conversation.Product.Price,
-                    Status = conversation.Product.Status,
-                    ThumbnailUrl = conversation.Product.Images
-                        .OrderBy(i => i.DisplayOrder)
-                        .Select(i => i.ImageUrl)
-                        .FirstOrDefault(),
-                    StoreId = conversation.Product.StoreId,
-                    StoreName = conversation.Product.Store?.Name ?? string.Empty
-                };
-            }
-
-            return new ConversationDto
-            {
-                Id = conversation.Id,
-                BuyerId = conversation.BuyerId,
-                SellerId = conversation.SellerId,
-                ProductId = conversation.ProductId,
-                IsClosed = conversation.IsClosed,
-                CreatedAt = conversation.CreatedAt,
-                LastMessageAt = conversation.LastMessageAt,
-                Buyer = new UserSummaryDto
-                {
-                    Id = conversation.Buyer.Id,
-                    FullName = conversation.Buyer.FullName,
-                    AvatarUrl = conversation.Buyer.AvatarUrl
-                },
-                Seller = new UserSummaryDto
-                {
-                    Id = conversation.Seller.Id,
-                    FullName = conversation.Seller.FullName,
-                    AvatarUrl = conversation.Seller.AvatarUrl
-                },
-                Product = productCard,
-                LastMessage = lastMsg != null ? MapToMessageDto(lastMsg) : null,
-                UnreadCount = unreadCount
-            };
-        }
-
-        private static ChatMessageDto MapToMessageDto(ChatMessage m)
-        {
-            ProductCardDto? productCard = null;
-            if (m.MessageType == "PRODUCT_CARD" && m.Product != null)
-            {
-                productCard = new ProductCardDto
-                {
-                    ProductId = m.Product.Id,
-                    Title = m.Product.Title,
-                    Price = m.Product.Price,
-                    Status = m.Product.Status,
-                    ThumbnailUrl = m.Product.Images?
-                        .OrderBy(i => i.DisplayOrder)
-                        .Select(i => i.ImageUrl)
-                        .FirstOrDefault(),
-                    StoreId = m.Product.StoreId,
-                    StoreName = m.Product.Store?.Name ?? string.Empty
-                };
-            }
-
-            return new ChatMessageDto
-            {
-                Id = m.Id,
-                ConversationId = m.ConversationId,
-                SenderId = m.SenderId,
-                SenderName = m.Sender?.FullName ?? "Unknown",
-                SenderAvatar = m.Sender?.AvatarUrl,
-                Content = m.IsDeleted ? "[This message was deleted]" : m.Content,
-                ProductId = m.ProductId,
-                MessageType = m.MessageType,
-                SentAt = m.SentAt,
-                IsRead = m.IsRead,
-                IsDeleted = m.IsDeleted,
-                ProductCard = productCard
-            };
-        }
+        if (!await IsMemberAsync(conversationId, userId)) throw Fail(403, "Bạn không có quyền xem hội thoại này.", "CHAT_ACCESS_DENIED");
+        return await ConversationDtoAsync(await Conversations().AsNoTracking().SingleAsync(c => c.Id == conversationId), userId);
     }
+    public async Task<ConversationDto> GetOrCreateConversationAsync(int buyerId, int sellerId, int? productId)
+    {
+        await UserAsync(buyerId);
+        if (buyerId == sellerId) throw Fail(400, "Bạn không thể nhắn shop của mình.", "CANNOT_CHAT_WITH_SELF");
+        await using var tx = await _context.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+        // Serialize retries, including general chat whose nullable product is outside the unique index filter.
+        await _context.Users.FromSqlInterpolated($"SELECT * FROM [auth].[Users] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {buyerId}").LoadAsync();
+        if (!await _context.Stores.AnyAsync(s => s.OwnerId == sellerId && s.IsActive && s.Owner.Role == "Shopper" && s.Owner.MerchantProfile != null && s.Owner.MerchantProfile.KycStatus == "APPROVED")) throw Fail(404, "Shop không còn hoạt động.", "SHOP_NOT_ACTIVE");
+        if (productId.HasValue && !await _context.Products.AnyAsync(p => p.Id == productId && p.Store.OwnerId == sellerId && p.IsPublished && p.Store.IsActive)) throw Fail(404, "Sản phẩm không thuộc shop hoặc không công khai.", "PRODUCT_NOT_FOUND");
+        var conversation = await Conversations().SingleOrDefaultAsync(c => c.BuyerId == buyerId && c.SellerId == sellerId && c.ProductId == productId);
+        if (conversation == null) { conversation = new Conversation { BuyerId = buyerId, SellerId = sellerId, ProductId = productId }; _context.Conversations.Add(conversation); await Doosii.DAL.Data.UploadedImageGuard.SaveChangesAsync(_context); conversation = await Conversations().SingleAsync(c => c.Id == conversation.Id); }
+        await tx.CommitAsync(); return await ConversationDtoAsync(conversation, buyerId);
+    }
+    public async Task<PagedResult<ConversationDto>> GetConversationsAsync(int userId, GetConversationsQuery query)
+    {
+        await UserAsync(userId); ValidatePage(query.Page, query.PageSize, 50);
+        var rows = Conversations().AsNoTracking().Where(c => c.BuyerId == userId || c.SellerId == userId);
+        var count = await rows.CountAsync();
+        var conversations = await rows.OrderByDescending(c => c.LastMessageAt).ThenByDescending(c => c.Id).Skip((query.Page - 1) * query.PageSize).Take(query.PageSize).ToListAsync();
+        var items = new List<ConversationDto>(); foreach (var c in conversations) items.Add(await ConversationDtoAsync(c, userId));
+        return new() { Items = items, TotalCount = count, Page = query.Page, PageSize = query.PageSize };
+    }
+    private static void ValidatePage(int page, int pageSize, int max) { if (page < 1 || page > 1000000 || pageSize < 1 || pageSize > max) throw Fail(400, "Phân trang không hợp lệ.", "INVALID_QUERY"); }
+    public async Task<ChatMessagesPageDto> GetMessagesAsync(int conversationId, int userId, GetMessagesQuery query)
+    {
+        if (!await IsMemberAsync(conversationId, userId)) throw Fail(403, "Bạn không có quyền xem hội thoại này.", "CHAT_ACCESS_DENIED");
+        ValidatePage(query.Page, query.PageSize, 100);
+        if (query.BeforeId is <= 0 || query.AfterId is <= 0 || (query.BeforeId.HasValue && query.AfterId.HasValue) || ((query.BeforeId.HasValue || query.AfterId.HasValue) && query.Page != 1)) throw Fail(400, "Cursor không hợp lệ.", "INVALID_QUERY");
+        var rows = Messages().AsNoTracking().Where(m => m.ConversationId == conversationId); var total = await rows.CountAsync();
+        if (query.BeforeId.HasValue) rows = rows.Where(m => m.Id < query.BeforeId);
+        if (query.AfterId.HasValue) rows = rows.Where(m => m.Id > query.AfterId);
+        // REST cursor pages use stable IDs; retain legacy chronological pagination when LatestFirst is false.
+        var ordered = query.LatestFirst && !query.AfterId.HasValue ? rows.OrderByDescending(m => m.Id) : rows.OrderBy(m => m.Id);
+        var items = await ordered.Skip((query.Page - 1) * query.PageSize).Take(query.PageSize + 1).ToListAsync();
+        return new() { Items = items.Take(query.PageSize).Select(MessageDto).ToList(), TotalCount = total, Page = query.Page, PageSize = query.PageSize, HasMore = items.Count > query.PageSize };
+    }
+    public Task<ChatMessageDto> SendTextMessageAsync(int conversationId, int senderId, string content, Guid? clientRequestId = null)
+    {
+        if (string.IsNullOrWhiteSpace(content) || content.Length > 2000) throw Fail(400, "Tin nhắn cần từ 1 đến 2000 ký tự.", "INVALID_MESSAGE");
+        return SendAsync(conversationId, senderId, content.Trim(), null, clientRequestId);
+    }
+    public Task<ChatMessageDto> SendProductCardAsync(int conversationId, int senderId, int productId, Guid? clientRequestId = null) => SendAsync(conversationId, senderId, "", productId, clientRequestId);
+    private async Task<ChatMessageDto> SendAsync(int conversationId, int senderId, string content, int? productId, Guid? requestId)
+    {
+        await UserAsync(senderId); if (requestId == Guid.Empty) throw Fail(400, "Mã gửi tin không hợp lệ.", "INVALID_REQUEST_ID");
+        await using var tx = await _context.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+        // All senders serialize on the conversation; message + inbox timestamp commit together.
+        var conversation = await _context.Conversations.FromSqlInterpolated($"SELECT * FROM [forum].[Conversations] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {conversationId}").SingleOrDefaultAsync() ?? throw Fail(404, "Không tìm thấy hội thoại.", "CONVERSATION_NOT_FOUND");
+        if (conversation.BuyerId != senderId && conversation.SellerId != senderId) throw Fail(403, "Bạn không có quyền gửi tin.", "CHAT_ACCESS_DENIED");
+        var kind = productId.HasValue ? "PRODUCT_CARD" : "TEXT";
+        if (requestId.HasValue) {
+            var existing = await Messages().SingleOrDefaultAsync(m => m.ConversationId == conversationId && m.SenderId == senderId && m.ClientRequestId == requestId);
+            if (existing != null) { if (existing.MessageType != kind || existing.ProductId != productId || (!productId.HasValue && existing.Content != content)) throw Fail(409, "Mã gửi tin đã dùng cho nội dung khác.", "REQUEST_ID_REUSED"); await tx.CommitAsync(); return MessageDto(existing); }
+        }
+        if (conversation.IsClosed) throw Fail(409, "Hội thoại đã đóng.", "CONVERSATION_CLOSED");
+        if (await _context.Users.AnyAsync(u => (u.Id == conversation.BuyerId || u.Id == conversation.SellerId) && u.Role == "Banned")) throw Fail(403, "Thành viên hội thoại không còn được phép nhận tin.", "CHAT_ACCESS_DENIED");
+        if (productId.HasValue) { var product = await _context.Products.Include(p => p.Store).ThenInclude(s => s.Owner).ThenInclude(u => u.MerchantProfile).SingleOrDefaultAsync(p => p.Id == productId); if (product == null || product.Store.OwnerId != conversation.SellerId || !Public(product)) throw Fail(404, "Sản phẩm không thuộc shop hoặc không công khai.", "PRODUCT_NOT_FOUND"); content = $"[Product: {product.Title}]"; }
+        var message = new ChatMessage { ConversationId = conversationId, SenderId = senderId, Content = content, ProductId = productId, MessageType = kind, ClientRequestId = requestId };
+        _context.ChatMessages.Add(message); conversation.LastMessageAt = message.SentAt; conversation.UpdatedAt = message.SentAt;
+        await Doosii.DAL.Data.UploadedImageGuard.SaveChangesAsync(_context); await tx.CommitAsync(); return MessageDto(await Messages().SingleAsync(m => m.Id == message.Id));
+    }
+    public async Task<ReadStatusDto> MarkMessagesAsReadAsync(int conversationId, int userId, int? upToId = null)
+    {
+        if (!await IsMemberAsync(conversationId, userId)) throw Fail(403, "Bạn không có quyền đọc hội thoại này.", "CHAT_ACCESS_DENIED");
+        if (upToId is <= 0) throw Fail(400, "Mốc đọc không hợp lệ.", "INVALID_QUERY");
+        var rows = _context.ChatMessages.Where(m => m.ConversationId == conversationId && m.SenderId != userId && !m.IsRead && !m.IsDeleted);
+        var boundary = await _context.ChatMessages.Where(m => m.ConversationId == conversationId && m.SenderId != userId && !m.IsDeleted && (!upToId.HasValue || m.Id <= upToId)).MaxAsync(m => (int?)m.Id) ?? 0;
+        var marked = await rows.Where(m => m.Id <= boundary).ExecuteUpdateAsync(s => s.SetProperty(m => m.IsRead, true));
+        return new() { ConversationId = conversationId, ReaderId = userId, UpToId = boundary, MarkedCount = marked, UnreadCount = await rows.CountAsync() };
+    }
+    public async Task<ProductCardDto?> GetProductCardAsync(int productId) { var p = await _context.Products.AsNoTracking().Include(p => p.Images).Include(p => p.Store).ThenInclude(s => s.Owner).ThenInclude(u => u.MerchantProfile).SingleOrDefaultAsync(p => p.Id == productId); return p == null ? null : Card(p); }
+    private static ProductCardDto Card(Product p) => new() { ProductId = p.Id, Title = p.Title, Price = p.Price, Status = p.Status, ThumbnailUrl = p.Images.OrderBy(i => i.DisplayOrder).ThenBy(i => i.Id).Select(i => i.ImageUrl).FirstOrDefault(), StoreId = p.StoreId, StoreName = p.Store.Name, IsPublic = Public(p) };
+    private async Task<ConversationDto> ConversationDtoAsync(Conversation c, int userId)
+    {
+        var last = await Messages().AsNoTracking().Where(m => m.ConversationId == c.Id && !m.IsDeleted).OrderByDescending(m => m.Id).FirstOrDefaultAsync();
+        var shop = await _context.Stores.AsNoTracking().Where(s => s.OwnerId == c.SellerId && (!c.ProductId.HasValue || s.Id == c.Product!.StoreId)).OrderBy(s => s.Id).Select(s => new { s.Id, s.Name }).FirstOrDefaultAsync();
+        var readStatuses = new List<ReadStatusDto>();
+        foreach (var reader in new[] { c.BuyerId, c.SellerId }) {
+            var boundary = await _context.ChatMessages.Where(m => m.ConversationId == c.Id && m.SenderId != reader && m.IsRead && !m.IsDeleted).MaxAsync(m => (int?)m.Id) ?? 0;
+            readStatuses.Add(new() { ConversationId = c.Id, ReaderId = reader, UpToId = boundary });
+        }
+        return new() { ReadStatuses = readStatuses, Id = c.Id, BuyerId = c.BuyerId, SellerId = c.SellerId, ProductId = c.ProductId, IsClosed = c.IsClosed, CreatedAt = DateTime.SpecifyKind(c.CreatedAt, DateTimeKind.Utc), LastMessageAt = DateTime.SpecifyKind(c.LastMessageAt, DateTimeKind.Utc), StoreId = shop?.Id, StoreName = shop?.Name ?? "", Buyer = new() { Id = c.Buyer.Id, FullName = c.Buyer.FullName, AvatarUrl = c.Buyer.AvatarUrl }, Seller = new() { Id = c.Seller.Id, FullName = c.Seller.FullName, AvatarUrl = c.Seller.AvatarUrl }, Product = c.Product == null ? null : Card(c.Product), LastMessage = last == null ? null : MessageDto(last), UnreadCount = await _context.ChatMessages.CountAsync(m => m.ConversationId == c.Id && m.SenderId != userId && !m.IsRead && !m.IsDeleted) };
+    }
+    private static ChatMessageDto MessageDto(ChatMessage m) => new() { Id = m.Id, ConversationId = m.ConversationId, SenderId = m.SenderId, SenderName = m.Sender?.FullName ?? "", SenderAvatar = m.Sender?.AvatarUrl, Content = m.IsDeleted ? "Tin nhắn đã được xóa" : m.Content, ProductId = m.ProductId, MessageType = m.MessageType, SentAt = DateTime.SpecifyKind(m.SentAt, DateTimeKind.Utc), IsRead = m.IsRead, IsDeleted = m.IsDeleted, ClientRequestId = m.ClientRequestId, ProductCard = !m.IsDeleted && m.Product != null && m.MessageType == "PRODUCT_CARD" ? Card(m.Product) : null };
 }

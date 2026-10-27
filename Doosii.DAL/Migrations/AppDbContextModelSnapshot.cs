@@ -69,6 +69,9 @@ namespace Doosii.DAL.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<Guid?>("ClientRequestId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Content")
                         .IsRequired()
                         .HasMaxLength(2000)
@@ -113,6 +116,10 @@ namespace Doosii.DAL.Migrations
 
                     b.HasIndex("SentAt");
 
+                    b.HasIndex("ConversationId", "SenderId", "ClientRequestId")
+                        .IsUnique()
+                        .HasFilter("[ClientRequestId] IS NOT NULL");
+
                     b.ToTable("ChatMessages", "forum", t =>
                         {
                             t.HasCheckConstraint("CK_ChatMessages_MessageType", "[MessageType] IN ('TEXT','PRODUCT_CARD','SYSTEM')");
@@ -129,6 +136,9 @@ namespace Doosii.DAL.Migrations
 
                     b.Property<int>("AuthorId")
                         .HasColumnType("int");
+
+                    b.Property<Guid?>("ClientRequestId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Content")
                         .IsRequired()
@@ -156,13 +166,18 @@ namespace Doosii.DAL.Migrations
 
                     b.HasIndex("AuthorId");
 
-                    b.HasIndex("CreatedAt");
+                    b.HasIndex("ParentCommentId", "PostId");
 
-                    b.HasIndex("ParentCommentId");
+                    b.HasIndex("PostId", "AuthorId", "ClientRequestId")
+                        .IsUnique()
+                        .HasFilter("[ClientRequestId] IS NOT NULL");
 
-                    b.HasIndex("PostId");
+                    b.HasIndex("PostId", "ParentCommentId", "CreatedAt", "Id");
 
-                    b.ToTable("Comments", "forum");
+                    b.ToTable("Comments", "forum", t =>
+                        {
+                            t.HasCheckConstraint("CK_Comments_Content", "LEN(LTRIM(RTRIM([Content]))) > 0");
+                        });
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Forum.Conversation", b =>
@@ -215,78 +230,80 @@ namespace Doosii.DAL.Migrations
                     b.ToTable("Conversations", "forum");
                 });
 
-            modelBuilder.Entity("Doosii.DAL.Models.Forum.PassPost", b =>
+            modelBuilder.Entity("Doosii.DAL.Models.Forum.PassPostInfo", b =>
                 {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<bool>("AllowEscrow")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
-
-                    b.Property<int>("AuthorId")
+                    b.Property<int>("PostId")
                         .HasColumnType("int");
 
                     b.Property<int>("ConditionPercent")
                         .HasColumnType("int");
 
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Description")
+                    b.Property<string>("Defects")
                         .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("MeasurementsJson")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PostType")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
 
                     b.Property<decimal>("Price")
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("ProductDescription")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("ProductName")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("SaleStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("AVAILABLE");
 
                     b.Property<string>("Size")
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
-                    b.Property<string>("Status")
+                    b.Property<string>("StyleTagsJson")
                         .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)")
-                        .HasDefaultValue("ACTIVE");
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
 
-                    b.Property<string>("StyleTags")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
+                    b.HasKey("PostId");
 
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("nvarchar(150)");
+                    b.HasIndex("PostId", "PostType")
+                        .IsUnique();
 
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AuthorId");
-
-                    b.HasIndex("CreatedAt");
-
-                    b.HasIndex("Status");
-
-                    b.ToTable("PassPosts", "forum", t =>
+                    b.ToTable("PassPostInfos", "forum", t =>
                         {
-                            t.HasCheckConstraint("CK_PassPosts_ConditionPercent", "[ConditionPercent] >= 0 AND [ConditionPercent] <= 100");
+                            t.HasCheckConstraint("CK_PassPostInfos_Condition", "[ConditionPercent] BETWEEN 0 AND 100");
 
-                            t.HasCheckConstraint("CK_PassPosts_Price", "[Price] > 0");
+                            t.HasCheckConstraint("CK_PassPostInfos_Measurements", "[MeasurementsJson] IS NULL OR (ISJSON([MeasurementsJson]) = 1 AND LEFT(LTRIM([MeasurementsJson]), 1) = '[')");
 
-                            t.HasCheckConstraint("CK_PassPosts_Status", "[Status] IN ('ACTIVE','LOCKED','SOLD','HIDDEN')");
+                            t.HasCheckConstraint("CK_PassPostInfos_Price", "[Price] > 0");
+
+                            t.HasCheckConstraint("CK_PassPostInfos_SaleStatus", "[SaleStatus] IN ('AVAILABLE','SOLD')");
+
+                            t.HasCheckConstraint("CK_PassPostInfos_Tags", "ISJSON([StyleTagsJson]) = 1 AND LEFT(LTRIM([StyleTagsJson]), 1) = '['");
+
+                            t.HasCheckConstraint("CK_PassPostInfos_Text", "LEN(LTRIM(RTRIM([ProductName]))) > 0 AND LEN(LTRIM(RTRIM([Size]))) > 0 AND LEN(LTRIM(RTRIM([Defects]))) > 0");
+
+                            t.HasCheckConstraint("CK_PassPostInfos_Type", "[PostType] = 'PASS'");
                         });
                 });
 
-            modelBuilder.Entity("Doosii.DAL.Models.Forum.PostImage", b =>
+            modelBuilder.Entity("Doosii.DAL.Models.Forum.Post", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -294,26 +311,140 @@ namespace Doosii.DAL.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<int>("AuthorId")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ClientRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PostDescription")
+                        .IsRequired()
+                        .HasMaxLength(5000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("VisibilityStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("ACTIVE");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AuthorId", "ClientRequestId")
+                        .IsUnique();
+
+                    b.HasIndex("AuthorId", "CreatedAt");
+
+                    b.HasIndex("VisibilityStatus", "CreatedAt", "Id");
+
+                    b.HasIndex("Type", "VisibilityStatus", "CreatedAt", "Id");
+
+                    b.ToTable("Posts", "forum", t =>
+                        {
+                            t.HasCheckConstraint("CK_Posts_RequestId", "[ClientRequestId] <> '00000000-0000-0000-0000-000000000000'");
+
+                            t.HasCheckConstraint("CK_Posts_Text", "LEN(LTRIM(RTRIM([Title]))) > 0 AND LEN(LTRIM(RTRIM([PostDescription]))) > 0");
+
+                            t.HasCheckConstraint("CK_Posts_Type", "[Type] IN ('PASS','OTHER')");
+
+                            t.HasCheckConstraint("CK_Posts_Visibility", "[VisibilityStatus] IN ('ACTIVE','HIDDEN')");
+                        });
+                });
+
+            modelBuilder.Entity("Doosii.DAL.Models.Forum.PostMedia", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Caption")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
                     b.Property<int>("DisplayOrder")
                         .HasColumnType("int");
 
-                    b.Property<string>("ImageUrl")
+                    b.Property<string>("MediaType")
                         .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
 
                     b.Property<int>("PostId")
                         .HasColumnType("int");
 
-                    b.Property<string>("PublicId")
+                    b.Property<string>("PostType")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<int?>("ProductId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SourceUrl")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("StoragePublicId")
+                        .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<int?>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ThumbnailUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("PostId", "DisplayOrder");
+                    b.HasIndex("PostId", "DisplayOrder")
+                        .IsUnique();
 
-                    b.ToTable("PostImages", "forum");
+                    b.HasIndex("PostId", "PostType");
+
+                    b.HasIndex("ProductId", "StoreId");
+
+                    b.HasIndex("StoreId", "PostId");
+
+                    b.ToTable("PostMedia", "forum", t =>
+                        {
+                            t.HasCheckConstraint("CK_PostMedia_PassTags", "[PostType] <> 'PASS' OR ([StoreId] IS NULL AND [ProductId] IS NULL)");
+
+                            t.HasCheckConstraint("CK_PostMedia_Position", "[DisplayOrder] >= 0");
+
+                            t.HasCheckConstraint("CK_PostMedia_ProductStore", "[ProductId] IS NULL OR [StoreId] IS NOT NULL");
+
+                            t.HasCheckConstraint("CK_PostMedia_Source", "LEN(LTRIM(RTRIM([SourceUrl]))) > 0 AND LEN(LTRIM(RTRIM([StoragePublicId]))) > 0");
+
+                            t.HasCheckConstraint("CK_PostMedia_Type", "[MediaType] IN ('IMAGE','VIDEO')");
+                        });
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Forum.PostReport", b =>
@@ -342,11 +473,6 @@ namespace Doosii.DAL.Migrations
                     b.Property<int>("PostId")
                         .HasColumnType("int");
 
-                    b.Property<string>("PostType")
-                        .IsRequired()
-                        .HasMaxLength(10)
-                        .HasColumnType("nvarchar(10)");
-
                     b.Property<string>("Reason")
                         .IsRequired()
                         .HasMaxLength(30)
@@ -370,24 +496,18 @@ namespace Doosii.DAL.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CreatedAt");
-
-                    b.HasIndex("PostId");
-
                     b.HasIndex("ReporterId");
 
                     b.HasIndex("ReviewedByAdminId");
 
-                    b.HasIndex("Status");
-
-                    b.HasIndex("PostId", "PostType", "ReporterId")
+                    b.HasIndex("PostId", "ReporterId")
                         .IsUnique()
                         .HasFilter("[Status] = 'PENDING'");
 
+                    b.HasIndex("Status", "CreatedAt", "Id");
+
                     b.ToTable("PostReports", "forum", t =>
                         {
-                            t.HasCheckConstraint("CK_PostReports_PostType", "[PostType] IN ('PASS','SPOT')");
-
                             t.HasCheckConstraint("CK_PostReports_Reason", "[Reason] IN ('SCAM','COUNTERFEIT','OFFENSIVE','PROHIBITED_CONTENT','OTHER')");
 
                             t.HasCheckConstraint("CK_PostReports_Status", "[Status] IN ('PENDING','REVIEWED','DISMISSED','ACTION_TAKEN')");
@@ -418,10 +538,6 @@ namespace Doosii.DAL.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("PostId");
-
-                    b.HasIndex("ReactionType");
-
                     b.HasIndex("UserId");
 
                     b.HasIndex("PostId", "UserId")
@@ -429,97 +545,7 @@ namespace Doosii.DAL.Migrations
 
                     b.ToTable("Reactions", "forum", t =>
                         {
-                            t.HasCheckConstraint("CK_Reactions_ReactionType", "[ReactionType] IN ('LIKE', 'HEART')");
-                        });
-                });
-
-            modelBuilder.Entity("Doosii.DAL.Models.Forum.SpotImage", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("DisplayOrder")
-                        .HasColumnType("int");
-
-                    b.Property<string>("ImageUrl")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<string>("PublicId")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<int>("SpotPostId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SpotPostId", "DisplayOrder");
-
-                    b.ToTable("SpotImages", "forum");
-                });
-
-            modelBuilder.Entity("Doosii.DAL.Models.Forum.SpotSharingPost", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("AuthorId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Content")
-                        .IsRequired()
-                        .HasMaxLength(2000)
-                        .HasColumnType("nvarchar(2000)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<decimal?>("Latitude")
-                        .HasColumnType("decimal(10, 7)");
-
-                    b.Property<string>("LocationName")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<decimal?>("Longitude")
-                        .HasColumnType("decimal(10, 7)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)")
-                        .HasDefaultValue("ACTIVE");
-
-                    b.Property<int?>("TaggedStoreId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AuthorId");
-
-                    b.HasIndex("CreatedAt");
-
-                    b.HasIndex("Latitude");
-
-                    b.HasIndex("Longitude");
-
-                    b.HasIndex("TaggedStoreId");
-
-                    b.ToTable("SpotSharingPosts", "forum", t =>
-                        {
-                            t.HasCheckConstraint("CK_SpotSharingPosts_Status", "[Status] IN ('ACTIVE','HIDDEN')");
+                            t.HasCheckConstraint("CK_Reactions_ReactionType", "[ReactionType] IN ('LIKE','HEART')");
                         });
                 });
 
@@ -762,10 +788,16 @@ namespace Doosii.DAL.Migrations
                     b.Property<int>("BuyerId")
                         .HasColumnType("int");
 
+                    b.Property<Guid?>("ClientRequestId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("DeliveredAt")
                         .HasColumnType("datetime2");
 
                     b.Property<decimal>("EscrowFee")
@@ -777,6 +809,18 @@ namespace Doosii.DAL.Migrations
 
                     b.Property<DateTime?>("PaidAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("PaymentDetailsJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PaymentLinkId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("PaymentMethod")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<decimal>("ProductPrice")
                         .HasColumnType("decimal(18,2)");
@@ -790,6 +834,12 @@ namespace Doosii.DAL.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<int>("SellerId")
                         .HasColumnType("int");
@@ -834,6 +884,10 @@ namespace Doosii.DAL.Migrations
 
                     b.HasIndex("Status");
 
+                    b.HasIndex("BuyerId", "ClientRequestId")
+                        .IsUnique()
+                        .HasFilter("[ClientRequestId] IS NOT NULL");
+
                     b.ToTable("Orders");
                 });
 
@@ -856,12 +910,12 @@ namespace Doosii.DAL.Migrations
 
                     b.Property<string>("ProductNameSnapshot")
                         .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
 
                     b.Property<string>("ThumbnailSnapshot")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
 
                     b.HasKey("Id");
 
@@ -892,6 +946,11 @@ namespace Doosii.DAL.Migrations
                     b.Property<int>("OrderId")
                         .HasColumnType("int");
 
+                    b.Property<string>("ProcessingStatus")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
                     b.Property<string>("RawPayload")
                         .HasColumnType("nvarchar(max)");
 
@@ -905,6 +964,9 @@ namespace Doosii.DAL.Migrations
                     b.HasIndex("OrderId");
 
                     b.HasIndex("TransactionCode");
+
+                    b.HasIndex("Gateway", "TransactionCode")
+                        .IsUnique();
 
                     b.ToTable("PaymentLogs");
                 });
@@ -939,6 +1001,9 @@ namespace Doosii.DAL.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<Guid?>("ClientRequestId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -957,7 +1022,9 @@ namespace Doosii.DAL.Migrations
 
                     b.HasIndex("Status");
 
-                    b.HasIndex("UserId");
+                    b.HasIndex("UserId", "ClientRequestId")
+                        .IsUnique()
+                        .HasFilter("[ClientRequestId] IS NOT NULL");
 
                     b.ToTable("WithdrawalRequests");
                 });
@@ -1012,6 +1079,9 @@ namespace Doosii.DAL.Migrations
                     b.Property<decimal>("BroadcastFee")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<Guid?>("ClientRequestId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -1047,11 +1117,13 @@ namespace Doosii.DAL.Migrations
 
                     b.HasIndex("EventTime");
 
-                    b.HasIndex("SellerId");
-
                     b.HasIndex("Status");
 
                     b.HasIndex("StoreId");
+
+                    b.HasIndex("SellerId", "ClientRequestId")
+                        .IsUnique()
+                        .HasFilter("[ClientRequestId] IS NOT NULL");
 
                     b.ToTable("BaleAnnouncements", "store");
                 });
@@ -1093,6 +1165,9 @@ namespace Doosii.DAL.Migrations
                     b.Property<int>("CategoryId")
                         .HasColumnType("int");
 
+                    b.Property<Guid?>("ClientRequestId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<int>("ConditionPercent")
                         .HasColumnType("int");
 
@@ -1103,8 +1178,31 @@ namespace Doosii.DAL.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
+                    b.Property<string>("DetailsJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("GroupPosition")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsPublished")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
                     b.Property<decimal>("Price")
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<int?>("ProductGroupId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ReservedOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<string>("Size")
                         .HasMaxLength(50)
@@ -1136,7 +1234,134 @@ namespace Doosii.DAL.Migrations
 
                     b.HasIndex("StoreId");
 
-                    b.ToTable("Products", "store");
+                    b.HasIndex("ProductGroupId", "StoreId");
+
+                    b.HasIndex("StoreId", "ClientRequestId")
+                        .IsUnique()
+                        .HasFilter("[ClientRequestId] IS NOT NULL");
+
+                    b.HasIndex("ProductGroupId", "GroupPosition", "Id");
+
+                    b.ToTable("Products", "store", t =>
+                        {
+                            t.HasCheckConstraint("CK_Products_GroupPosition", "([ProductGroupId] IS NULL AND [GroupPosition] IS NULL) OR ([ProductGroupId] IS NOT NULL AND [GroupPosition] IS NOT NULL AND [GroupPosition] >= 0)");
+                        });
+                });
+
+            modelBuilder.Entity("Doosii.DAL.Models.Store.ProductGroup", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<bool>("IsPublished")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId", "CreatedAt", "Id");
+
+                    b.ToTable("ProductGroups", "store");
+                });
+
+            modelBuilder.Entity("Doosii.DAL.Models.Store.ProductGroupImage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ImageUrl")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("ProductGroupId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductGroupId", "DisplayOrder", "Id");
+
+                    b.ToTable("ProductGroupImages", "store", t =>
+                        {
+                            t.HasCheckConstraint("CK_ProductGroupImages_Position", "[DisplayOrder] >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Doosii.DAL.Models.Store.ProductGroupMutation", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<Guid>("ClientRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Operation")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<string>("PayloadHash")
+                        .IsRequired()
+                        .HasColumnType("char(64)");
+
+                    b.Property<int>("ProductGroupId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductGroupId", "StoreId");
+
+                    b.HasIndex("StoreId", "ClientRequestId")
+                        .IsUnique();
+
+                    b.ToTable("ProductGroupMutations", "store", t =>
+                        {
+                            t.HasCheckConstraint("CK_ProductGroupMutations_Operation", "[Operation] IN (N'CREATE', N'UPDATE')");
+                        });
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Store.ProductImage", b =>
@@ -1163,6 +1388,99 @@ namespace Doosii.DAL.Migrations
                     b.HasIndex("ProductId");
 
                     b.ToTable("ProductImages", "store");
+                });
+
+            modelBuilder.Entity("Doosii.DAL.Models.Store.ShopRelocationRequest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("CancelledAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("ClientRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CurrentAddress")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<double?>("CurrentLatitude")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("CurrentLongitude")
+                        .HasColumnType("float");
+
+                    b.Property<string>("ProposedAddress")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<double>("ProposedLatitude")
+                        .HasColumnType("float");
+
+                    b.Property<double>("ProposedLongitude")
+                        .HasColumnType("float");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("RequestedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ReviewReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<Guid?>("ReviewRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ReviewedByName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int?>("ReviewedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReviewRequestId")
+                        .IsUnique()
+                        .HasFilter("[ReviewRequestId] IS NOT NULL");
+
+                    b.HasIndex("StoreId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ShopRelocationRequests_OnePendingPerStore")
+                        .HasFilter("[Status] = N'PENDING'");
+
+                    b.HasIndex("StoreId", "ClientRequestId")
+                        .IsUnique();
+
+                    b.ToTable("ShopRelocationRequests", "store", t =>
+                        {
+                            t.HasCheckConstraint("CK_ShopRelocationRequests_Coordinates", "[ProposedLatitude] >= -90 AND [ProposedLatitude] <= 90 AND [ProposedLongitude] >= -180 AND [ProposedLongitude] <= 180");
+
+                            t.HasCheckConstraint("CK_ShopRelocationRequests_Status", "[Status] IN (N'PENDING', N'CANCELLED', N'APPROVED', N'REJECTED')");
+                        });
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Store.Store", b =>
@@ -1302,6 +1620,51 @@ namespace Doosii.DAL.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Doosii.DAL.Models.UploadedImage", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("OwnerId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PublicId")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique();
+
+                    b.HasIndex("OwnerId", "CreatedAt");
+
+                    b.ToTable("UploadedImages", "media", t =>
+                        {
+                            t.HasCheckConstraint("CK_UploadedImages_State", "[State] IN ('ACTIVE','DELETING','DELETED')");
+                        });
+                });
+
             modelBuilder.Entity("Doosii.DAL.Models.User", b =>
                 {
                     b.Property<int>("Id")
@@ -1387,9 +1750,16 @@ namespace Doosii.DAL.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Doosii.DAL.Models.Forum.Post", null)
+                        .WithMany()
+                        .HasForeignKey("PostId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Doosii.DAL.Models.Forum.Comment", "ParentComment")
                         .WithMany("Replies")
-                        .HasForeignKey("ParentCommentId")
+                        .HasForeignKey("ParentCommentId", "PostId")
+                        .HasPrincipalKey("Id", "PostId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Author");
@@ -1423,7 +1793,19 @@ namespace Doosii.DAL.Migrations
                     b.Navigation("Seller");
                 });
 
-            modelBuilder.Entity("Doosii.DAL.Models.Forum.PassPost", b =>
+            modelBuilder.Entity("Doosii.DAL.Models.Forum.PassPostInfo", b =>
+                {
+                    b.HasOne("Doosii.DAL.Models.Forum.Post", "Post")
+                        .WithOne("PassInfo")
+                        .HasForeignKey("Doosii.DAL.Models.Forum.PassPostInfo", "PostId", "PostType")
+                        .HasPrincipalKey("Doosii.DAL.Models.Forum.Post", "Id", "Type")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Post");
+                });
+
+            modelBuilder.Entity("Doosii.DAL.Models.Forum.Post", b =>
                 {
                     b.HasOne("Doosii.DAL.Models.User", "Author")
                         .WithMany()
@@ -1434,19 +1816,41 @@ namespace Doosii.DAL.Migrations
                     b.Navigation("Author");
                 });
 
-            modelBuilder.Entity("Doosii.DAL.Models.Forum.PostImage", b =>
+            modelBuilder.Entity("Doosii.DAL.Models.Forum.PostMedia", b =>
                 {
-                    b.HasOne("Doosii.DAL.Models.Forum.PassPost", "Post")
-                        .WithMany("Images")
-                        .HasForeignKey("PostId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                    b.HasOne("Doosii.DAL.Models.Store.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Doosii.DAL.Models.Forum.Post", "Post")
+                        .WithMany("Media")
+                        .HasForeignKey("PostId", "PostType")
+                        .HasPrincipalKey("Id", "Type")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Doosii.DAL.Models.Store.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId", "StoreId")
+                        .HasPrincipalKey("Id", "StoreId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Post");
+
+                    b.Navigation("Product");
+
+                    b.Navigation("Store");
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Forum.PostReport", b =>
                 {
+                    b.HasOne("Doosii.DAL.Models.Forum.Post", null)
+                        .WithMany()
+                        .HasForeignKey("PostId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Doosii.DAL.Models.User", "Reporter")
                         .WithMany()
                         .HasForeignKey("ReporterId")
@@ -1465,6 +1869,12 @@ namespace Doosii.DAL.Migrations
 
             modelBuilder.Entity("Doosii.DAL.Models.Forum.Reaction", b =>
                 {
+                    b.HasOne("Doosii.DAL.Models.Forum.Post", null)
+                        .WithMany()
+                        .HasForeignKey("PostId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Doosii.DAL.Models.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
@@ -1472,35 +1882,6 @@ namespace Doosii.DAL.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
-                });
-
-            modelBuilder.Entity("Doosii.DAL.Models.Forum.SpotImage", b =>
-                {
-                    b.HasOne("Doosii.DAL.Models.Forum.SpotSharingPost", "SpotPost")
-                        .WithMany("Images")
-                        .HasForeignKey("SpotPostId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("SpotPost");
-                });
-
-            modelBuilder.Entity("Doosii.DAL.Models.Forum.SpotSharingPost", b =>
-                {
-                    b.HasOne("Doosii.DAL.Models.User", "Author")
-                        .WithMany()
-                        .HasForeignKey("AuthorId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("Doosii.DAL.Models.Store.Store", "TaggedStore")
-                        .WithMany()
-                        .HasForeignKey("TaggedStoreId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("Author");
-
-                    b.Navigation("TaggedStore");
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.MerchantProfile", b =>
@@ -1651,9 +2032,51 @@ namespace Doosii.DAL.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Doosii.DAL.Models.Store.ProductGroup", "ProductGroup")
+                        .WithMany("Products")
+                        .HasForeignKey("ProductGroupId", "StoreId")
+                        .HasPrincipalKey("Id", "StoreId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Category");
 
+                    b.Navigation("ProductGroup");
+
                     b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("Doosii.DAL.Models.Store.ProductGroup", b =>
+                {
+                    b.HasOne("Doosii.DAL.Models.Store.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("Doosii.DAL.Models.Store.ProductGroupImage", b =>
+                {
+                    b.HasOne("Doosii.DAL.Models.Store.ProductGroup", "ProductGroup")
+                        .WithMany("Images")
+                        .HasForeignKey("ProductGroupId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ProductGroup");
+                });
+
+            modelBuilder.Entity("Doosii.DAL.Models.Store.ProductGroupMutation", b =>
+                {
+                    b.HasOne("Doosii.DAL.Models.Store.ProductGroup", "ProductGroup")
+                        .WithMany()
+                        .HasForeignKey("ProductGroupId", "StoreId")
+                        .HasPrincipalKey("Id", "StoreId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ProductGroup");
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Store.ProductImage", b =>
@@ -1665,6 +2088,17 @@ namespace Doosii.DAL.Migrations
                         .IsRequired();
 
                     b.Navigation("Product");
+                });
+
+            modelBuilder.Entity("Doosii.DAL.Models.Store.ShopRelocationRequest", b =>
+                {
+                    b.HasOne("Doosii.DAL.Models.Store.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Store.Store", b =>
@@ -1715,6 +2149,15 @@ namespace Doosii.DAL.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Doosii.DAL.Models.UploadedImage", b =>
+                {
+                    b.HasOne("Doosii.DAL.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Doosii.DAL.Models.Forum.Comment", b =>
                 {
                     b.Navigation("Replies");
@@ -1725,14 +2168,11 @@ namespace Doosii.DAL.Migrations
                     b.Navigation("Messages");
                 });
 
-            modelBuilder.Entity("Doosii.DAL.Models.Forum.PassPost", b =>
+            modelBuilder.Entity("Doosii.DAL.Models.Forum.Post", b =>
                 {
-                    b.Navigation("Images");
-                });
+                    b.Navigation("Media");
 
-            modelBuilder.Entity("Doosii.DAL.Models.Forum.SpotSharingPost", b =>
-                {
-                    b.Navigation("Images");
+                    b.Navigation("PassInfo");
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Order.Order", b =>
@@ -1754,6 +2194,13 @@ namespace Doosii.DAL.Migrations
             modelBuilder.Entity("Doosii.DAL.Models.Store.Product", b =>
                 {
                     b.Navigation("Images");
+                });
+
+            modelBuilder.Entity("Doosii.DAL.Models.Store.ProductGroup", b =>
+                {
+                    b.Navigation("Images");
+
+                    b.Navigation("Products");
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Store.Store", b =>

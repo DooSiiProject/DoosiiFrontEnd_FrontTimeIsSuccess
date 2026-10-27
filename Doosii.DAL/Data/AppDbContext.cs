@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Doosii.DAL.Models;
 using Doosii.DAL.Models.Store;
 using Doosii.DAL.Models.Order;
@@ -13,6 +13,8 @@ namespace Doosii.DAL.Data
         {
         }
 
+        public DbSet<UploadedImage> UploadedImages { get; set; }
+
         public DbSet<User> Users { get; set; }
         public DbSet<RefreshToken> RefreshTokens { get; set; }
         public DbSet<EmailOtp> EmailOtps { get; set; }
@@ -20,14 +22,22 @@ namespace Doosii.DAL.Data
 
         // Store schema (Track 1 - Tri)
         public DbSet<Store> Stores { get; set; }
+        public DbSet<ShopRelocationRequest> ShopRelocationRequests { get; set; }
         public DbSet<StoreLocation> StoreLocations { get; set; }
         public DbSet<Category> Categories { get; set; }
         public DbSet<Product> Products { get; set; }
+        public DbSet<ProductGroup> ProductGroups { get; set; }
+        public DbSet<ProductGroupImage> ProductGroupImages { get; set; }
+        public DbSet<ProductGroupMutation> ProductGroupMutations { get; set; }
         public DbSet<ProductImage> ProductImages { get; set; }
         public DbSet<BaleAnnouncement> BaleAnnouncements { get; set; }
         public DbSet<StoreReview> StoreReviews { get; set; }
 
-        // Forum schema (Track 1 - Tri)
+        public DbSet<Post> Posts { get; set; }
+        public DbSet<PassPostInfo> PassPostInfos { get; set; }
+        public DbSet<PostMedia> PostMedia { get; set; }
+
+        // Legacy CLR accessors retained until B3/B4; excluded from EF mapping.
         public DbSet<PassPost> PassPosts { get; set; }
         public DbSet<PostImage> PostImages { get; set; }
         public DbSet<SpotSharingPost> SpotSharingPosts { get; set; }
@@ -54,6 +64,56 @@ namespace Doosii.DAL.Data
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+            modelBuilder.Entity<UploadedImage>(e => {
+                e.HasIndex(i => i.PublicId).IsUnique();
+                e.HasIndex(i => new { i.OwnerId, i.CreatedAt });
+                e.HasOne<User>().WithMany().HasForeignKey(i => i.OwnerId).OnDelete(DeleteBehavior.Restrict);
+                e.ToTable("UploadedImages", "media", t => t.HasCheckConstraint("CK_UploadedImages_State", "[State] IN ('ACTIVE','DELETING','DELETED')"));
+            });
+            modelBuilder.Entity<ProductGroup>(e =>
+            {
+                e.HasAlternateKey(g => new { g.Id, g.StoreId });
+                e.HasOne(g => g.Store).WithMany().HasForeignKey(g => g.StoreId).OnDelete(DeleteBehavior.Restrict);
+                e.Property(g => g.IsPublished).HasDefaultValue(true);
+                e.HasIndex(g => new { g.StoreId, g.CreatedAt, g.Id });
+            });
+            modelBuilder.Entity<ProductGroupImage>(e =>
+            {
+                e.HasOne(i => i.ProductGroup).WithMany(g => g.Images).HasForeignKey(i => i.ProductGroupId).OnDelete(DeleteBehavior.Restrict);
+                e.HasIndex(i => new { i.ProductGroupId, i.DisplayOrder, i.Id });
+                e.ToTable("ProductGroupImages", "store", t => t.HasCheckConstraint("CK_ProductGroupImages_Position", "[DisplayOrder] >= 0"));
+            });
+            modelBuilder.Entity<ProductGroupMutation>(e =>
+            {
+                e.HasOne(m => m.ProductGroup).WithMany().HasForeignKey(m => new { m.ProductGroupId, m.StoreId })
+                    .HasPrincipalKey(g => new { g.Id, g.StoreId }).OnDelete(DeleteBehavior.Restrict);
+                e.HasIndex(m => new { m.StoreId, m.ClientRequestId }).IsUnique();
+                e.ToTable("ProductGroupMutations", "store", t => t.HasCheckConstraint("CK_ProductGroupMutations_Operation", "[Operation] IN (N'CREATE', N'UPDATE')"));
+            });
+            modelBuilder.Entity<Product>(e =>
+            {
+                e.HasOne(p => p.ProductGroup).WithMany(g => g.Products).HasForeignKey(p => new { p.ProductGroupId, p.StoreId })
+                    .HasPrincipalKey(g => new { g.Id, g.StoreId }).OnDelete(DeleteBehavior.Restrict);
+                e.HasIndex(p => new { p.ProductGroupId, p.GroupPosition, p.Id });
+                e.ToTable("Products", "store", t => t.HasCheckConstraint("CK_Products_GroupPosition",
+                    "([ProductGroupId] IS NULL AND [GroupPosition] IS NULL) OR ([ProductGroupId] IS NOT NULL AND [GroupPosition] IS NOT NULL AND [GroupPosition] >= 0)"));
+            });
+            modelBuilder.Entity<ShopRelocationRequest>(entity =>
+            {
+                entity.HasOne(r => r.Store).WithMany().HasForeignKey(r => r.StoreId).OnDelete(DeleteBehavior.Restrict);
+                entity.HasIndex(r => r.StoreId).IsUnique().HasFilter("[Status] = N'PENDING'").HasDatabaseName("IX_ShopRelocationRequests_OnePendingPerStore");
+                entity.HasIndex(r => new { r.StoreId, r.ClientRequestId }).IsUnique();
+                entity.HasIndex(r => r.ReviewRequestId).IsUnique().HasFilter("[ReviewRequestId] IS NOT NULL");
+                entity.ToTable("ShopRelocationRequests", "store", table =>
+                {
+                    table.HasCheckConstraint("CK_ShopRelocationRequests_Status", "[Status] IN (N'PENDING', N'CANCELLED', N'APPROVED', N'REJECTED')");
+                    table.HasCheckConstraint("CK_ShopRelocationRequests_Coordinates", "[ProposedLatitude] >= -90 AND [ProposedLatitude] <= 90 AND [ProposedLongitude] >= -180 AND [ProposedLongitude] <= 180");
+                });
+            });
+            modelBuilder.Entity<BaleAnnouncement>().HasIndex(a => new { a.SellerId, a.ClientRequestId }).IsUnique().HasFilter("[ClientRequestId] IS NOT NULL");
+            modelBuilder.Entity<Product>().HasIndex(p => p.StoreId);
+            modelBuilder.Entity<Product>().Property(p => p.IsPublished).HasDefaultValue(true);
+            modelBuilder.Entity<Product>().HasIndex(p => new { p.StoreId, p.ClientRequestId }).IsUnique().HasFilter("[ClientRequestId] IS NOT NULL");
 
             modelBuilder.Entity<User>(entity =>
             {
@@ -150,6 +210,8 @@ namespace Doosii.DAL.Data
                       .HasForeignKey(o => o.SellerId)
                       .OnDelete(DeleteBehavior.Restrict);
 
+                entity.HasIndex(o => o.BuyerId);
+                entity.HasIndex(o => new { o.BuyerId, o.ClientRequestId }).IsUnique().HasFilter("[ClientRequestId] IS NOT NULL");
                 entity.HasIndex(o => o.Status);
                 entity.HasIndex(o => o.CreatedAt);
             });
@@ -178,6 +240,7 @@ namespace Doosii.DAL.Data
                       .OnDelete(DeleteBehavior.Cascade);
 
                 entity.HasIndex(pl => pl.TransactionCode);
+                entity.HasIndex(pl => new { pl.Gateway, pl.TransactionCode }).IsUnique();
             });
 
             modelBuilder.Entity<Dispute>(entity =>
@@ -201,6 +264,7 @@ namespace Doosii.DAL.Data
                       .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasIndex(wr => wr.Status);
+                entity.HasIndex(wr => new { wr.UserId, wr.ClientRequestId }).IsUnique().HasFilter("[ClientRequestId] IS NOT NULL");
             });
 
             // Notification schema
@@ -237,174 +301,7 @@ namespace Doosii.DAL.Data
                 entity.HasIndex(b => b.EventTime);
             });
 
-            // Forum schema - PassPost
-            modelBuilder.Entity<PassPost>(entity =>
-            {
-                entity.ToTable("PassPosts", "forum", t =>
-                {
-                    t.HasCheckConstraint("CK_PassPosts_Price", "[Price] > 0");
-                    t.HasCheckConstraint("CK_PassPosts_ConditionPercent", "[ConditionPercent] >= 0 AND [ConditionPercent] <= 100");
-                    t.HasCheckConstraint("CK_PassPosts_Status", "[Status] IN ('ACTIVE','LOCKED','SOLD','HIDDEN')");
-                });
-
-                entity.HasOne(p => p.Author)
-                      .WithMany()
-                      .HasForeignKey(p => p.AuthorId)
-                      .OnDelete(DeleteBehavior.Restrict);
-
-                entity.Property(p => p.Status)
-                      .HasDefaultValue("ACTIVE");
-
-                entity.Property(p => p.AllowEscrow)
-                      .HasDefaultValue(true);
-
-                entity.HasIndex(p => p.AuthorId);
-                entity.HasIndex(p => p.Status);
-                entity.HasIndex(p => p.CreatedAt);
-            });
-
-            modelBuilder.Entity<PostImage>(entity =>
-            {
-                entity.ToTable("PostImages", "forum");
-
-                entity.HasOne(i => i.Post)
-                      .WithMany(p => p.Images)
-                      .HasForeignKey(i => i.PostId)
-                      .OnDelete(DeleteBehavior.Cascade);
-
-                entity.HasIndex(i => new { i.PostId, i.DisplayOrder });
-            });
-
-            // Forum schema - SpotSharingPost (fully configured)
-            modelBuilder.Entity<SpotSharingPost>(entity =>
-            {
-                entity.ToTable("SpotSharingPosts", "forum", t =>
-                {
-                    t.HasCheckConstraint("CK_SpotSharingPosts_Status", "[Status] IN ('ACTIVE','HIDDEN')");
-                });
-
-                entity.HasOne(s => s.Author)
-                      .WithMany()
-                      .HasForeignKey(s => s.AuthorId)
-                      .OnDelete(DeleteBehavior.Restrict);
-
-                entity.HasOne(s => s.TaggedStore)
-                      .WithMany()
-                      .HasForeignKey(s => s.TaggedStoreId)
-                      .OnDelete(DeleteBehavior.SetNull);
-
-                entity.Property(s => s.Status)
-                      .HasDefaultValue("ACTIVE");
-
-                entity.HasIndex(s => s.AuthorId);
-                entity.HasIndex(s => s.TaggedStoreId);
-                entity.HasIndex(s => s.CreatedAt);
-                entity.HasIndex(s => s.Latitude);
-                entity.HasIndex(s => s.Longitude);
-            });
-
-            // Forum schema - SpotImage
-            modelBuilder.Entity<SpotImage>(entity =>
-            {
-                entity.ToTable("SpotImages", "forum");
-
-                entity.HasOne(i => i.SpotPost)
-                      .WithMany(p => p.Images)
-                      .HasForeignKey(i => i.SpotPostId)
-                      .OnDelete(DeleteBehavior.Cascade);
-
-                entity.HasIndex(i => new { i.SpotPostId, i.DisplayOrder });
-            });
-
-            // Forum schema - Comment
-            modelBuilder.Entity<Comment>(entity =>
-            {
-                entity.ToTable("Comments", "forum");
-
-                entity.Property(c => c.Content)
-                      .HasMaxLength(1000)
-                      .IsRequired();
-
-                entity.Property(c => c.IsDeleted)
-                      .HasDefaultValue(false);
-
-                entity.HasOne(c => c.Author)
-                      .WithMany()
-                      .HasForeignKey(c => c.AuthorId)
-                      .OnDelete(DeleteBehavior.Restrict);
-
-                entity.HasOne(c => c.ParentComment)
-                      .WithMany(p => p.Replies)
-                      .HasForeignKey(c => c.ParentCommentId)
-                      .OnDelete(DeleteBehavior.Restrict);
-
-                entity.HasIndex(c => c.PostId);
-                entity.HasIndex(c => c.AuthorId);
-                entity.HasIndex(c => c.ParentCommentId);
-                entity.HasIndex(c => c.CreatedAt);
-            });
-
-            // Forum schema - Reaction
-            modelBuilder.Entity<Reaction>(entity =>
-            {
-                entity.ToTable("Reactions", "forum", t =>
-                {
-                    t.HasCheckConstraint("CK_Reactions_ReactionType", "[ReactionType] IN ('LIKE', 'HEART')");
-                });
-
-                entity.Property(r => r.ReactionType)
-                      .HasMaxLength(20)
-                      .IsRequired();
-
-                entity.HasOne(r => r.User)
-                      .WithMany()
-                      .HasForeignKey(r => r.UserId)
-                      .OnDelete(DeleteBehavior.Restrict);
-
-                entity.HasIndex(r => new { r.PostId, r.UserId })
-                      .IsUnique();
-
-                entity.HasIndex(r => r.PostId);
-                entity.HasIndex(r => r.UserId);
-                entity.HasIndex(r => r.ReactionType);
-            });
-
-            // Forum schema - PostReport
-            modelBuilder.Entity<PostReport>(entity =>
-            {
-                entity.ToTable("PostReports", "forum", t =>
-                {
-                    t.HasCheckConstraint("CK_PostReports_Reason",
-                        "[Reason] IN ('SCAM','COUNTERFEIT','OFFENSIVE','PROHIBITED_CONTENT','OTHER')");
-                    t.HasCheckConstraint("CK_PostReports_Status",
-                        "[Status] IN ('PENDING','REVIEWED','DISMISSED','ACTION_TAKEN')");
-                    t.HasCheckConstraint("CK_PostReports_PostType",
-                        "[PostType] IN ('PASS','SPOT')");
-                });
-
-                entity.Property(pr => pr.Status)
-                      .HasDefaultValue("PENDING");
-
-                entity.HasOne(pr => pr.Reporter)
-                      .WithMany()
-                      .HasForeignKey(pr => pr.ReporterId)
-                      .OnDelete(DeleteBehavior.Restrict);
-
-                entity.HasOne(pr => pr.ReviewedByAdmin)
-                      .WithMany()
-                      .HasForeignKey(pr => pr.ReviewedByAdminId)
-                      .OnDelete(DeleteBehavior.Restrict);
-
-                entity.HasIndex(pr => pr.PostId);
-                entity.HasIndex(pr => pr.ReporterId);
-                entity.HasIndex(pr => pr.Status);
-                entity.HasIndex(pr => pr.CreatedAt);
-
-                // Unique index: moi user chi co 1 report PENDING cho moi post
-                entity.HasIndex(pr => new { pr.PostId, pr.PostType, pr.ReporterId })
-                      .HasFilter("[Status] = 'PENDING'")
-                      .IsUnique();
-            });
+            CommunityModelConfiguration.Configure(modelBuilder);
 
             // Store schema - StoreReview
             modelBuilder.Entity<StoreReview>(entity =>
@@ -490,6 +387,7 @@ namespace Doosii.DAL.Data
                       .HasForeignKey(m => m.ProductId)
                       .OnDelete(DeleteBehavior.SetNull);
 
+                entity.HasIndex(m => new { m.ConversationId, m.SenderId, m.ClientRequestId }).IsUnique().HasFilter("[ClientRequestId] IS NOT NULL");
                 entity.HasIndex(m => m.ConversationId);
                 entity.HasIndex(m => m.SentAt);
 

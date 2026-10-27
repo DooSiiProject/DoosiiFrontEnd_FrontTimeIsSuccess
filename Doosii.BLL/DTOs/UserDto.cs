@@ -6,6 +6,8 @@ namespace Doosii.BLL.DTOs
         public string Email { get; set; } = string.Empty;
         public string FullName { get; set; } = string.Empty;
         public string Role { get; set; } = string.Empty;
+        public string? AvatarUrl { get; set; }
+        public string Status { get; set; } = "active";
         public bool IsGoogle { get; set; }
         public DateTime CreatedAt { get; set; }
     }

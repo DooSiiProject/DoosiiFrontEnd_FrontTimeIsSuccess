@@ -2,6 +2,7 @@ namespace Doosii.BLL.DTOs
 {
     public class PayOsWebhookPayload
     {
+        public bool Success { get; set; }
         public string? Code { get; set; }
         public string? Desc { get; set; }
         public PayOsWebhookData? Data { get; set; }

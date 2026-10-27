@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Doosii.BLL.Common;
 using Doosii.BLL.DTOs;
 using Doosii.BLL.Interfaces;
+using Doosii.BLL.Exceptions;
 
 namespace Doosii.API.Controllers
 {
@@ -57,11 +58,14 @@ namespace Doosii.API.Controllers
             }
             catch (InvalidOperationException ex)
             {
-                return BadRequest(ApiResponse<PaymentQrResponse>.ErrorResponse(ex.Message));
+                return Conflict(ApiResponse<PaymentQrResponse>.ErrorResponse(ex.Message));
             }
-            catch (Exception ex)
+            catch (ServiceException ex) { return StatusCode(ex.StatusCode, ApiResponse<PaymentQrResponse>.ErrorResponse(ex.Message)); }
+            catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number == 1205) { return Conflict(new { success = false, message = "Dữ liệu đang được cập nhật. Vui lòng thử lại.", data = (object?)null, errors = Array.Empty<string>() }); }
+            catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException) { return Conflict(ApiResponse<PaymentQrResponse>.ErrorResponse("Dữ liệu đã thay đổi. Vui lòng tải lại.")); }
+            catch (Exception)
             {
-                return StatusCode(500, ApiResponse<PaymentQrResponse>.ErrorResponse("Đã xảy ra lỗi khi tạo mã thanh toán VietQR.", new List<string> { ex.Message }));
+                return StatusCode(500, ApiResponse<PaymentQrResponse>.ErrorResponse("Đã xảy ra lỗi khi tạo mã thanh toán VietQR."));
             }
         }
 
@@ -91,9 +95,11 @@ namespace Doosii.API.Controllers
             {
                 return StatusCode(403, ApiResponse<PaymentQrResponse>.ErrorResponse(ex.Message));
             }
-            catch (Exception ex)
+            catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number == 1205) { return Conflict(new { success = false, message = "Dữ liệu đang được cập nhật. Vui lòng thử lại.", data = (object?)null, errors = Array.Empty<string>() }); }
+            catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException) { return Conflict(ApiResponse<PaymentQrResponse>.ErrorResponse("Dữ liệu đã thay đổi. Vui lòng tải lại.")); }
+            catch (Exception)
             {
-                return StatusCode(500, ApiResponse<PaymentQrResponse>.ErrorResponse("Đã xảy ra lỗi máy chủ nội bộ.", new List<string> { ex.Message }));
+                return StatusCode(500, ApiResponse<PaymentQrResponse>.ErrorResponse("Đã xảy ra lỗi máy chủ nội bộ."));
             }
         }
 
@@ -102,11 +108,13 @@ namespace Doosii.API.Controllers
         /// </summary>
         [HttpPost("webhook")]
         [AllowAnonymous]
-        public async Task<IActionResult> ReceivePayOsWebhook([FromBody] PayOsWebhookPayload payload)
+        public async Task<IActionResult> ReceivePayOsWebhook([FromBody] JsonElement body)
         {
             try
             {
-                var rawBody = JsonSerializer.Serialize(payload);
+                var rawBody = body.GetRawText();
+                var payload = JsonSerializer.Deserialize<PayOsWebhookPayload>(rawBody, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                if (payload == null) return BadRequest(new { success = false, message = "Webhook không hợp lệ." });
                 var success = await _paymentService.ProcessPayOsWebhookAsync(payload, rawBody);
 
                 if (!success)
@@ -116,9 +124,12 @@ namespace Doosii.API.Controllers
 
                 return Ok(new { success = true, message = "Webhook đã được xử lý thành công. Đơn hàng chuyển sang trạng thái tạm giữ (ESCROW_HOLDING)." });
             }
-            catch (Exception ex)
+            catch (JsonException) { return BadRequest(new { success = false, message = "Webhook không hợp lệ." }); }
+            catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number == 1205) { return Conflict(new { success = false, message = "Dữ liệu đang được cập nhật. Vui lòng thử lại.", data = (object?)null, errors = Array.Empty<string>() }); }
+            catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException) { return Conflict(ApiResponse<PaymentQrResponse>.ErrorResponse("Dữ liệu đã thay đổi. Vui lòng tải lại.")); }
+            catch (Exception)
             {
-                return StatusCode(500, new { success = false, message = "Lỗi xử lý webhook.", error = ex.Message });
+                return StatusCode(500, new { success = false, message = "Lỗi xử lý webhook." });
             }
         }
     }

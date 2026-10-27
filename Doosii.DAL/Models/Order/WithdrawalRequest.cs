@@ -19,6 +19,7 @@ namespace Doosii.DAL.Models.Order
 
         [Required]
         public int UserId { get; set; }
+        public Guid? ClientRequestId { get; set; }
 
         [ForeignKey(nameof(UserId))]
         public User User { get; set; } = null!;

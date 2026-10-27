@@ -2,207 +2,78 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Doosii.BLL.DTOs;
 using Doosii.BLL.Interfaces;
+using Doosii.BLL.Exceptions;
 using Doosii.DAL.Data;
 using Doosii.DAL.Models.Order;
 using Doosii.DAL.Models.Store;
+namespace Doosii.BLL.Services;
 
-namespace Doosii.BLL.Services
+public class WalletService : IWalletService
 {
-    public class WalletService : IWalletService
+    private readonly AppDbContext _context;
+    private readonly ILogger<WalletService> _logger;
+    public WalletService(AppDbContext context, ILogger<WalletService> logger) { _context = context; _logger = logger; }
+
+    public async Task<WalletResponse> GetSellerWalletAsync(int userId)
     {
-        private readonly AppDbContext _context;
-        private readonly ILogger<WalletService> _logger;
-
-        public WalletService(AppDbContext context, ILogger<WalletService> logger)
-        {
-            _context = context;
-            _logger = logger;
-        }
-
-        public async Task<WalletResponse> GetSellerWalletAsync(int userId)
-        {
-            var user = await _context.Users.FindAsync(userId);
-            if (user == null)
-            {
-                throw new KeyNotFoundException("Không tìm thấy thông tin tài khoản người dùng.");
-            }
-
-            // 1. Lấy tất cả đơn bán của người dùng
-            var salesOrders = await _context.Orders
-                .Where(o => o.SellerId == userId)
-                .OrderByDescending(o => o.CreatedAt)
-                .ToListAsync();
-
-            // 2. Lấy tất cả các yêu cầu rút tiền của người dùng
-            var withdrawalRequests = await _context.WithdrawalRequests
-                .Where(w => w.UserId == userId)
-                .OrderByDescending(w => w.CreatedAt)
-                .ToListAsync();
-
-            // Tính toán doanh thu đã giải ngân (COMPLETED_RELEASED)
-            decimal totalReleasedRevenue = 0;
-            decimal escrowHoldingBalance = 0;
-
-            var transactions = new List<WalletTransactionDto>();
-
-            foreach (var order in salesOrders)
-            {
-                // Tiền người bán nhận được sau khi trừ phí ký quỹ 2.5%
-                var sellerPayout = order.ProductPrice + order.ShippingFee - order.EscrowFee;
-
-                if (order.Status == OrderStatus.CompletedReleased)
-                {
-                    totalReleasedRevenue += sellerPayout;
-
-                    transactions.Add(new WalletTransactionDto
-                    {
-                        Id = $"ORD-{order.Id}",
-                        Type = "ORDER_PAYOUT",
-                        Amount = sellerPayout,
-                        Description = $"Tiền bán hàng đơn #{order.Id} (Đã trừ phí sàn)",
-                        Status = "COMPLETED",
-                        ReferenceId = order.Id.ToString(),
-                        CreatedAt = order.CompletedAt ?? order.UpdatedAt ?? order.CreatedAt
-                    });
-                }
-                else if (order.Status == OrderStatus.EscrowHolding || order.Status == OrderStatus.InTransit)
-                {
-                    escrowHoldingBalance += sellerPayout;
-                }
-            }
-
-            // Tính tiền đã rút và đang chờ rút
-            decimal pendingWithdrawalAmount = 0;
-            decimal approvedWithdrawalAmount = 0;
-
-            foreach (var w in withdrawalRequests)
-            {
-                if (w.Status == WithdrawalStatus.Pending)
-                {
-                    pendingWithdrawalAmount += w.Amount;
-                }
-                else if (w.Status == WithdrawalStatus.Approved)
-                {
-                    approvedWithdrawalAmount += w.Amount;
-                }
-
-                transactions.Add(new WalletTransactionDto
-                {
-                    Id = $"WDR-{w.Id}",
-                    Type = "WITHDRAWAL",
-                    Amount = -w.Amount, // Ghi nợ số âm
-                    Description = $"Rút tiền về {w.BankName} - {w.AccountNumber} ({w.AccountHolder})",
-                    Status = w.Status,
-                    ReferenceId = w.Id.ToString(),
-                    CreatedAt = w.CreatedAt
-                });
-            }
-
-            // Tính tiền phí phát sóng thông báo khui kiện đã trừ qua ví
-            var paidAnnouncements = await _context.BaleAnnouncements
-                .Where(b => b.SellerId == userId && b.PaymentMethod == "WALLET" && b.Status == AnnouncementStatus.PaidActive)
-                .ToListAsync();
-
-            decimal totalAnnouncementFees = 0;
-            foreach (var b in paidAnnouncements)
-            {
-                totalAnnouncementFees += b.BroadcastFee;
-                transactions.Add(new WalletTransactionDto
-                {
-                    Id = $"ANN-{b.Id}",
-                    Type = "ANNOUNCEMENT_FEE",
-                    Amount = -b.BroadcastFee,
-                    Description = $"Phí phát sóng thông báo khui kiện: {b.Title}",
-                    Status = "COMPLETED",
-                    ReferenceId = b.Id.ToString(),
-                    CreatedAt = b.CreatedAt
-                });
-            }
-
-            // Số dư khả dụng = Tổng tiền đã giải ngân - (Đã duyệt rút + Đang chờ duyệt rút + Phí thông báo)
-            var availableBalance = totalReleasedRevenue - (approvedWithdrawalAmount + pendingWithdrawalAmount + totalAnnouncementFees);
-            if (availableBalance < 0) availableBalance = 0;
-
-            return new WalletResponse
-            {
-                AvailableBalance = availableBalance,
-                EscrowHoldingBalance = escrowHoldingBalance,
-                PendingWithdrawalAmount = pendingWithdrawalAmount,
-                TotalRevenue = totalReleasedRevenue,
-                Transactions = transactions.OrderByDescending(t => t.CreatedAt).ToList()
-            };
-        }
-
-        public async Task<WithdrawalResponse> CreateWithdrawalRequestAsync(int userId, CreateWithdrawalRequest request)
-        {
-            var user = await _context.Users.FindAsync(userId);
-            if (user == null)
-            {
-                throw new KeyNotFoundException("Không tìm thấy thông tin tài khoản người dùng.");
-            }
-
-            // 1. Kiểm tra xem người dùng có yêu cầu nào đang PENDING không (REQ-19)
-            var hasPending = await _context.WithdrawalRequests
-                .AnyAsync(w => w.UserId == userId && w.Status == WithdrawalStatus.Pending);
-
-            if (hasPending)
-            {
-                throw new InvalidOperationException("Bạn hiện đang có một yêu cầu rút tiền đang chờ xử lý. Vui lòng đợi hoàn tất trước khi tạo yêu cầu mới.");
-            }
-
-            // 2. Tính số dư khả dụng hiện tại
-            var wallet = await GetSellerWalletAsync(userId);
-            if (request.Amount > wallet.AvailableBalance)
-            {
-                throw new InvalidOperationException($"Số dư khả dụng ({wallet.AvailableBalance:N0} VND) không đủ để thực hiện rút {request.Amount:N0} VND.");
-            }
-
-            // 3. Tạo bản ghi WithdrawalRequest
-            var withdrawal = new WithdrawalRequest
-            {
-                UserId = userId,
-                BankName = request.BankName.Trim(),
-                AccountNumber = request.AccountNumber.Trim(),
-                AccountHolder = request.AccountHolder.Trim().ToUpperInvariant(),
-                Amount = request.Amount,
-                Status = WithdrawalStatus.Pending,
-                CreatedAt = DateTime.UtcNow
-            };
-
-            _context.WithdrawalRequests.Add(withdrawal);
-            await _context.SaveChangesAsync();
-
-            _logger.LogInformation("User #{UserId} created withdrawal request #{WithdrawalId} for {Amount:N0} VND to {BankName} {AccountNumber}",
-                userId, withdrawal.Id, withdrawal.Amount, withdrawal.BankName, withdrawal.AccountNumber);
-
-            return MapToWithdrawalResponse(withdrawal);
-        }
-
-        public async Task<List<WithdrawalResponse>> GetMyWithdrawalRequestsAsync(int userId)
-        {
-            var list = await _context.WithdrawalRequests
-                .Where(w => w.UserId == userId)
-                .OrderByDescending(w => w.CreatedAt)
-                .ToListAsync();
-
-            return list.Select(MapToWithdrawalResponse).ToList();
-        }
-
-        private static WithdrawalResponse MapToWithdrawalResponse(WithdrawalRequest w)
-        {
-            return new WithdrawalResponse
-            {
-                Id = w.Id,
-                UserId = w.UserId,
-                BankName = w.BankName,
-                AccountNumber = w.AccountNumber,
-                AccountHolder = w.AccountHolder,
-                Amount = w.Amount,
-                Status = w.Status,
-                AdminNote = w.AdminNote,
-                CreatedAt = w.CreatedAt,
-                ProcessedAt = w.ProcessedAt
-            };
-        }
+        await WalletRules.EnsureSellerAsync(_context, userId);
+        return await CalculateAsync(_context, userId);
     }
+    internal static async Task<WalletResponse> CalculateAsync(AppDbContext db, int userId)
+    {
+        var now = DateTime.UtcNow;
+        var orders = await db.Orders.AsNoTracking().Include(o => o.Dispute).Include(o => o.EscrowTransactions).Where(o => o.SellerId == userId).ToListAsync();
+        var withdrawals = await db.WithdrawalRequests.AsNoTracking().Where(w => w.UserId == userId).ToListAsync();
+        var announcements = await db.BaleAnnouncements.AsNoTracking().Where(b => b.SellerId == userId && b.PaymentMethod == "WALLET" && b.Status == AnnouncementStatus.PaidActive).ToListAsync();
+        decimal revenue = 0, mature = 0, holding = 0, awaiting = 0;
+        var transactions = new List<WalletTransactionDto>();
+        foreach (var order in orders)
+        {
+            // Existing policy: platform fee is deducted from seller payout.
+            var payout = Math.Max(0, order.ProductPrice + order.ShippingFee - order.EscrowFee);
+            if (order.Status == OrderStatus.CompletedReleased)
+            {
+                revenue += payout;
+                var deadline = DisputeRules.Deadline(order);
+                var released = order.EscrowTransactions.Count == 1 && order.EscrowTransactions.Single().Status == EscrowStatus.Released && order.TotalAmount > 0 && order.EscrowTransactions.Single().Amount == order.TotalAmount;
+                if (released && deadline.HasValue && deadline.Value < now && order.Dispute?.Status != "PENDING_REVIEW") mature += payout;
+                else awaiting += payout;
+                transactions.Add(new WalletTransactionDto { Id = $"ORD-{order.Id}", Type = "ORDER_PAYOUT", Amount = payout, Description = $"Tiền bán hàng đơn #{order.Id} (Đã trừ phí sàn)", Status = "COMPLETED", ReferenceId = order.Id.ToString(), CreatedAt = order.CompletedAt ?? order.UpdatedAt ?? order.CreatedAt });
+            }
+            else if (order.Status is OrderStatus.EscrowHolding or OrderStatus.InTransit or OrderStatus.Disputed) holding += payout;
+        }
+        var pending = withdrawals.Where(w => w.Status == WithdrawalStatus.Pending).Sum(w => w.Amount);
+        var approved = withdrawals.Where(w => w.Status == WithdrawalStatus.Approved).Sum(w => w.Amount);
+        foreach (var w in withdrawals) transactions.Add(new WalletTransactionDto { Id = $"WDR-{w.Id}", Type = "WITHDRAWAL", Amount = -w.Amount, Description = $"Yêu cầu rút về {w.BankName} · ****{w.AccountNumber[^Math.Min(4, w.AccountNumber.Length)..]}", Status = w.Status, ReferenceId = w.Id.ToString(), CreatedAt = w.CreatedAt });
+        foreach (var a in announcements) transactions.Add(new WalletTransactionDto { Id = $"ANN-{a.Id}", Type = "ANNOUNCEMENT_FEE", Amount = -a.BroadcastFee, Description = $"Phí thông báo khui kiện: {a.Title}", Status = "COMPLETED", ReferenceId = a.Id.ToString(), CreatedAt = a.CreatedAt });
+        var net = mature - pending - approved - announcements.Sum(a => a.BroadcastFee);
+        return new WalletResponse { AvailableBalance = Math.Max(0, net), DeficitAmount = Math.Max(0, -net), PendingReleaseBalance = awaiting, EscrowHoldingBalance = holding, PendingWithdrawalAmount = pending, TotalRevenue = revenue, Transactions = transactions.OrderByDescending(t => t.CreatedAt).ThenByDescending(t => t.Id).ToList() };
+    }
+    public async Task<WithdrawalResponse> CreateWithdrawalRequestAsync(int userId, CreateWithdrawalRequest request)
+    {
+        var bank = request.BankName?.Trim() ?? ""; var account = request.AccountNumber?.Trim() ?? ""; var holder = request.AccountHolder?.Trim().ToUpperInvariant() ?? "";
+        if (bank.Length is < 1 or > 100 || holder.Length is < 1 or > 100 || account.Length is < 1 or > 50 || !account.All(char.IsAsciiDigit) || request.Amount is < 50000 or > 100000000 || decimal.Truncate(request.Amount) != request.Amount || !request.ClientRequestId.HasValue || request.ClientRequestId == Guid.Empty)
+            throw new ArgumentException("Kiểm tra ngân hàng, chủ tài khoản, số tài khoản chỉ gồm chữ số, mã yêu cầu và số tiền nguyên từ 50.000 đến 100.000.000 VND.");
+        await using var tx = await _context.Database.BeginTransactionAsync();
+        await WalletRules.LockAsync(_context, userId); await WalletRules.EnsureSellerAsync(_context, userId);
+        var existing = await _context.WithdrawalRequests.AsNoTracking().SingleOrDefaultAsync(w => w.UserId == userId && w.ClientRequestId == request.ClientRequestId);
+        if (existing != null)
+        {
+            if (existing.Amount != request.Amount || existing.BankName != bank || existing.AccountNumber != account || existing.AccountHolder != holder) throw new ServiceException(409, "Mã yêu cầu đã dùng với nội dung khác.", "IDEMPOTENCY_CONFLICT");
+            await tx.CommitAsync(); return Map(existing);
+        }
+        if (await _context.WithdrawalRequests.AnyAsync(w => w.UserId == userId && w.Status == WithdrawalStatus.Pending)) throw new ServiceException(409, "Bạn đã có yêu cầu rút đang chờ xử lý. Hãy tải lại lịch sử.", "PENDING_WITHDRAWAL");
+        var wallet = await CalculateAsync(_context, userId);
+        if (request.Amount > wallet.AvailableBalance) throw new ServiceException(409, "Số dư khả dụng không đủ. Hãy tải lại ví.", "INSUFFICIENT_FUNDS");
+        var w = new WithdrawalRequest { UserId = userId, BankName = bank, AccountNumber = account, AccountHolder = holder, Amount = request.Amount, ClientRequestId = request.ClientRequestId, CreatedAt = DateTime.UtcNow, Status = WithdrawalStatus.Pending };
+        _context.WithdrawalRequests.Add(w); await _context.SaveChangesAsync(); await tx.CommitAsync();
+        _logger.LogInformation("Withdrawal {Id} created for seller {UserId}", w.Id, userId);
+        return Map(w);
+    }
+    public async Task<List<WithdrawalResponse>> GetMyWithdrawalRequestsAsync(int userId)
+    {
+        await WalletRules.EnsureSellerAsync(_context, userId);
+        return (await _context.WithdrawalRequests.AsNoTracking().Where(w => w.UserId == userId).OrderByDescending(w => w.CreatedAt).ThenByDescending(w => w.Id).ToListAsync()).Select(Map).ToList();
+    }
+    internal static WithdrawalResponse Map(WithdrawalRequest w) => new() { Id = w.Id, UserId = w.UserId, BankName = w.BankName, AccountNumber = w.AccountNumber, AccountHolder = w.AccountHolder, Amount = w.Amount, Status = w.Status, AdminNote = w.AdminNote, CreatedAt = w.CreatedAt, ProcessedAt = w.ProcessedAt, ClientRequestId = w.ClientRequestId };
 }

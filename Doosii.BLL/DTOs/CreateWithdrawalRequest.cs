@@ -4,6 +4,7 @@ namespace Doosii.BLL.DTOs
 {
     public class CreateWithdrawalRequest
     {
+        [Required] public Guid? ClientRequestId { get; set; }
         [Required(ErrorMessage = "Tên ngân hàng nhận tiền là bắt buộc.")]
         [MaxLength(100, ErrorMessage = "Tên ngân hàng tối đa 100 ký tự.")]
         public string BankName { get; set; } = string.Empty;

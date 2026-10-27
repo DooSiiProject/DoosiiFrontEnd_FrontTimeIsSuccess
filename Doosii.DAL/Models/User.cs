@@ -18,7 +18,7 @@ namespace Doosii.DAL.Models
         public string FullName { get; set; } = string.Empty;
         public string PasswordHash { get; set; } = string.Empty;
         [MaxLength(50)]
-        public string Role { get; set; } = "Customer";
+        public string Role { get; set; } = "CasualUser";
         public bool IsGoogle { get; set; } = false;
         [MaxLength(500)]
         public string? AvatarUrl { get; set; }

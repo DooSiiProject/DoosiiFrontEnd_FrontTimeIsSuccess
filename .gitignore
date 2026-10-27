@@ -68,3 +68,6 @@ secrets.json
 
 ## Scratch scripts
 scratch/
+.build-part7/
+
+.build-part6/

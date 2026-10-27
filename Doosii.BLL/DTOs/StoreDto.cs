@@ -12,6 +12,14 @@
     {
         public int Id { get; set; }
         public int OwnerId { get; set; }
+        public int? ApplicationId { get; set; }
+        public double? Latitude { get; set; }
+        public double? Longitude { get; set; }
+        public string? AvatarUrl { get; set; }
+        public string? ContactEmail { get; set; }
+        public DateTime? EstablishedDate { get; set; }
+        public string? TaxCode { get; set; }
+        public List<string> MediaUrls { get; set; } = new();
         public string Name { get; set; } = string.Empty;
         public string? Description { get; set; }
         public string? Phone { get; set; }

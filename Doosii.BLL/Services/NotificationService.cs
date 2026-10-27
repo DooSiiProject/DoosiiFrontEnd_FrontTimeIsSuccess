@@ -91,6 +91,7 @@ namespace Doosii.BLL.Services
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Lỗi khi lưu broadcast notification vào DB");
+                return; // Do not announce a broadcast that was not persisted.
             }
 
             // 2. Bắn SignalR Broadcast real-time tới broadcast_channel
@@ -109,14 +110,14 @@ namespace Doosii.BLL.Services
         {
             var query = _context.Notifications
                 .Where(n => n.UserId == userId)
-                .AsQueryable();
+                .AsNoTracking();
 
             if (unreadOnly.HasValue && unreadOnly.Value)
             {
                 query = query.Where(n => !n.IsRead);
             }
 
-            var list = await query.OrderByDescending(n => n.CreatedAt).Take(50).ToListAsync();
+            var list = await query.OrderByDescending(n => n.CreatedAt).ThenByDescending(n => n.Id).Take(50).ToListAsync();
 
             return list.Select(MapToNotificationDto).ToList();
         }
@@ -132,26 +133,34 @@ namespace Doosii.BLL.Services
             var notification = await _context.Notifications
                 .FirstOrDefaultAsync(n => n.Id == notificationId && n.UserId == userId);
 
-            if (notification != null && !notification.IsRead)
+            if (notification == null) throw new KeyNotFoundException("Không tìm thấy thông báo của bạn.");
+
+            if (!notification.IsRead)
             {
                 notification.IsRead = true;
                 await _context.SaveChangesAsync();
             }
+            await NotifyReadChangedAsync(userId);
         }
 
         public async Task MarkAllAsReadAsync(int userId)
         {
-            var unreadList = await _context.Notifications
-                .Where(n => n.UserId == userId && !n.IsRead)
-                .ToListAsync();
-
-            if (unreadList.Count > 0)
+            await _context.Notifications.Where(n => n.UserId == userId && !n.IsRead)
+                .ExecuteUpdateAsync(updates => updates.SetProperty(n => n.IsRead, true));
+            await NotifyReadChangedAsync(userId);
+        }
+        // The database mutation has committed. Push failure must not turn it into
+        // an HTTP error; clients recover through REST on focus/reconnect.
+        private async Task NotifyReadChangedAsync(int userId)
+        {
+            try
             {
-                foreach (var n in unreadList)
-                {
-                    n.IsRead = true;
-                }
-                await _context.SaveChangesAsync();
+                await _hubContext.Clients.Group($"user_{userId}")
+                    .SendAsync("NotificationsChanged", new { Reason = "read" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Cannot push notification read status for user {UserId}", userId);
             }
         }
 
@@ -166,8 +175,11 @@ namespace Doosii.BLL.Services
                 Type = n.Type,
                 TargetUrl = n.TargetUrl,
                 IsRead = n.IsRead,
-                CreatedAt = n.CreatedAt
+                CreatedAt = DateTime.SpecifyKind(n.CreatedAt, DateTimeKind.Utc)
             };
         }
     }
 }
+
+
+

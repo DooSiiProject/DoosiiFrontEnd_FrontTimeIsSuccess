@@ -1,4 +1,4 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Doosii.BLL.DTOs;
@@ -111,6 +111,7 @@ namespace Doosii.API.Controllers
                 var result = await _storeService.UpdateStoreAsync(userId.Value, storeId, request);
                 return Ok(ApiResponse.Ok(result, "Cap nhat cua hang thanh cong."));
             }
+            catch (ArgumentException ex) { return BadRequest(ApiResponse.Fail(ex.Message)); }
             catch (KeyNotFoundException ex) { return NotFound(ApiResponse.Fail(ex.Message)); }
             catch (UnauthorizedAccessException ex) { return StatusCode(403, ApiResponse.Fail(ex.Message)); }
         }
@@ -118,6 +119,16 @@ namespace Doosii.API.Controllers
         /// <summary>
         /// Lay thong tin cua hang (public).
         /// </summary>
+        [HttpGet("me")]
+        [Authorize]
+        public async Task<IActionResult> GetMyStore()
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null) return Unauthorized(ApiResponse.Fail("Token không hợp lệ."));
+            try { return Ok(ApiResponse.Ok(await _storeService.GetMyStoreAsync(userId.Value), "Lấy shop của tôi thành công.")); }
+            catch (KeyNotFoundException ex) { return NotFound(ApiResponse.Fail(ex.Message)); }
+        }
+
         [HttpGet("{storeId:int}")]
         public async Task<IActionResult> GetStore(int storeId)
         {
@@ -133,14 +144,15 @@ namespace Doosii.API.Controllers
         /// Lay danh sach san pham cua cua hang (public, chi AVAILABLE, co phan trang).
         /// </summary>
         [HttpGet("{storeId:int}/products")]
-        public async Task<IActionResult> GetStoreProducts(int storeId, [FromQuery] int page = 1, [FromQuery] int pageSize = 12)
+        public async Task<IActionResult> GetStoreProducts(int storeId, [FromQuery] int page = 1, [FromQuery] int pageSize = 12, [FromQuery] int? categoryId = null)
         {
+            if (categoryId.HasValue && categoryId.Value < 1) return BadRequest(ApiResponse.Fail("categoryId phải là số nguyên dương."));
             if (page < 1) return BadRequest(ApiResponse.Fail("page phai lon hon hoac bang 1."));
             if (pageSize < 1 || pageSize > 24) return BadRequest(ApiResponse.Fail("pageSize phai tu 1 den 24."));
 
             try
             {
-                var result = await _productService.GetStoreProductsAsync(storeId, page, pageSize);
+                var result = await _productService.GetStoreProductsAsync(storeId, page, pageSize, categoryId);
                 return Ok(ApiResponse.Ok(result, "Lay danh sach san pham thanh cong."));
             }
             catch (KeyNotFoundException ex) { return NotFound(ApiResponse.Fail(ex.Message)); }

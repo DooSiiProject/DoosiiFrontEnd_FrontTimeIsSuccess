@@ -1,4 +1,6 @@
 ﻿using System.Security.Claims;
+using System.ComponentModel.DataAnnotations;
+using Doosii.BLL.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Doosii.BLL.DTOs;
@@ -16,19 +18,21 @@ namespace Doosii.API.Controllers
     public class UploadsController : ControllerBase
     {
         private readonly ICloudinaryService _cloudinaryService;
+        private readonly UploadedImageService _images;
         private readonly ILogger<UploadsController> _logger;
 
         // Whitelist folder hop le cho frontend truyen len
         private static readonly HashSet<string> AllowedFolders =
             new(StringComparer.OrdinalIgnoreCase)
             {
-                "products", "stores", "kyc", "reviews", "avatars", "forum", ""
+                "products", "stores", "kyc", "reviews", "avatars", "forum", "disputes", ""
             };
 
-        public UploadsController(ICloudinaryService cloudinaryService, ILogger<UploadsController> logger)
+        public UploadsController(ICloudinaryService cloudinaryService, ILogger<UploadsController> logger, UploadedImageService images)
         {
             _cloudinaryService = cloudinaryService;
             _logger = logger;
+            _images = images;
         }
 
         /// <summary>
@@ -78,6 +82,7 @@ namespace Doosii.API.Controllers
             {
                 _logger.LogInformation("User {UserId} uploading single image to folder '{Folder}'", userId, folder);
                 var result = await _cloudinaryService.UploadImageAsync(file, folder);
+                await _images.RegisterAsync(userId.Value, new[] { result });
                 return StatusCode(201, ApiResponse.Ok(result, "Image uploaded successfully"));
             }
             catch (ServiceException ex)
@@ -153,6 +158,7 @@ namespace Doosii.API.Controllers
                     userId, files.Count, folder);
 
                 var results = await _cloudinaryService.UploadImagesAsync(files, folder);
+                await _images.RegisterAsync(userId.Value, results);
 
                 _logger.LogInformation("User {UserId} uploaded {Count} image(s) successfully.", userId, results.Count);
 
@@ -194,17 +200,10 @@ namespace Doosii.API.Controllers
                 return BadRequest(ApiResponse.Fail("PublicId khong duoc de trong.", new List<string> { "INVALID_PUBLIC_ID" }));
             }
 
-            if (!_cloudinaryService.IsConfigured)
-            {
-                return StatusCode(503, ApiResponse.Fail(
-                    "Dich vu upload anh chua duoc cau hinh tren server nay.",
-                    new List<string> { "CLOUDINARY_NOT_CONFIGURED" }));
-            }
-
             try
             {
                 _logger.LogInformation("User {UserId} deleting image with publicId: {PublicId}", userId, publicId);
-                await _cloudinaryService.DeleteImageAsync(publicId);
+                await _images.DeleteAsync(userId.Value, publicId);
                 return Ok(ApiResponse.Ok(new { }, "Image deleted successfully"));
             }
             catch (ServiceException ex)
@@ -216,6 +215,19 @@ namespace Doosii.API.Controllers
                 _logger.LogError(ex, "Unexpected error deleting image {PublicId}", publicId);
                 return StatusCode(500, ApiResponse.Fail("An unexpected error occurred.", new List<string> { "INTERNAL_ERROR" }));
             }
+        }
+
+        public sealed class ResolveImagesRequest {
+            [Required, MaxLength(100)] public List<string> Urls { get; set; } = [];
+        }
+        [HttpPost("resolve")]
+        public async Task<IActionResult> ResolveImages([FromBody] ResolveImagesRequest request)
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null) return Unauthorized(ApiResponse.Fail("Token không hợp lệ."));
+            try { return Ok(ApiResponse.Ok(await _images.ResolveAsync(userId.Value, request.Urls))); }
+            catch (ServiceException ex) { return StatusCode(ex.StatusCode, ApiResponse.Fail(ex.Message, new List<string> { ex.ErrorCode })); }
+            catch (Exception ex) { _logger.LogError(ex, "Image ownership resolution failed"); return StatusCode(500, ApiResponse.Fail("Không thể kiểm tra ảnh. Vui lòng thử lại.")); }
         }
 
         private int? GetCurrentUserId()

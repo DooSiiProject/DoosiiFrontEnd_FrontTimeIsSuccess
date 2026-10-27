@@ -1,7 +1,9 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace Doosii.BLL.DTOs
 {
+    [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
     public class UpdateStoreRequest
     {
         [Required(ErrorMessage = "Ten cua hang la bat buoc.")]
@@ -12,18 +14,11 @@ namespace Doosii.BLL.DTOs
         public string? Description { get; set; }
 
         [MaxLength(20)]
+        [RegularExpression(@"\+?[0-9 ()-]{7,20}", ErrorMessage = "So dien thoai khong hop le.")]
         public string? Phone { get; set; }
-
-        [MaxLength(500)]
-        public string? Address { get; set; }
 
         [MaxLength(500)]
         public string? OpeningHours { get; set; }
 
-        [Range(-90.0, 90.0, ErrorMessage = "Latitude phai tu -90 den 90.")]
-        public double? Latitude { get; set; }
-
-        [Range(-180.0, 180.0, ErrorMessage = "Longitude phai tu -180 den 180.")]
-        public double? Longitude { get; set; }
     }
 }

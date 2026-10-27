@@ -48,6 +48,7 @@ namespace Doosii.DAL.Models.Forum
         [MaxLength(20)]
         public string MessageType { get; set; } = "TEXT";
 
+        public Guid? ClientRequestId { get; set; }
         public DateTime SentAt { get; set; } = DateTime.UtcNow;
 
         /// <summary>
@@ -71,3 +72,4 @@ namespace Doosii.DAL.Models.Forum
         public Product? Product { get; set; }
     }
 }
+

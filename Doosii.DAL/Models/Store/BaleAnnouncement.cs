@@ -25,6 +25,7 @@ namespace Doosii.DAL.Models.Store
 
         [Required]
         public int SellerId { get; set; }
+        public Guid? ClientRequestId { get; set; }
 
         [ForeignKey(nameof(SellerId))]
         public User Seller { get; set; } = null!;

@@ -53,6 +53,15 @@ namespace Doosii.DAL.Models.Store
 
         public DateTime? UpdatedAt { get; set; }
 
+        public string? DetailsJson { get; set; }
+        public bool IsPublished { get; set; } = true;
+        public int? ReservedOrderId { get; set; }
+        public Guid? ClientRequestId { get; set; }
+        public int? ProductGroupId { get; set; }
+        public int? GroupPosition { get; set; }
+        public ProductGroup? ProductGroup { get; set; }
+        [Timestamp] public byte[] RowVersion { get; set; } = Array.Empty<byte>();
+
         // Navigation
         [ForeignKey(nameof(StoreId))]
         public Store Store { get; set; } = null!;

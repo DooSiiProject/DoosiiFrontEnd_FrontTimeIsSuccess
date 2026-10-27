@@ -6,6 +6,7 @@ namespace Doosii.BLL.Interfaces
     {
         Task<AnnouncementResponse> CreateAnnouncementAsync(int sellerId, CreateAnnouncementRequest request);
         Task<List<AnnouncementResponse>> GetSellerAnnouncementsAsync(int sellerId);
-        Task<List<AnnouncementResponse>> GetUpcomingAnnouncementsAsync();
+        Task<List<AnnouncementResponse>> GetUpcomingAnnouncementsAsync(int? storeId = null);
+        Task<AnnouncementOptions> GetOptionsAsync(int sellerId);
     }
 }

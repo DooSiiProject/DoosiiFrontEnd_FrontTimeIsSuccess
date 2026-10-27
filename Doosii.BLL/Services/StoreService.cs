@@ -1,4 +1,6 @@
-﻿using System.Globalization;
+using System.Data;
+using System.Text.Json;
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Doosii.BLL.DTOs;
 using Doosii.BLL.Helpers;
@@ -19,6 +21,7 @@ namespace Doosii.BLL.Services
 
         public async Task<StoreDto> CreateStoreAsync(int userId, CreateStoreRequest request)
         {
+            await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
             var user = await _context.Users
                 .Include(u => u.MerchantProfile)
                 .FirstOrDefaultAsync(u => u.Id == userId);
@@ -26,7 +29,7 @@ namespace Doosii.BLL.Services
             if (user == null)
                 throw new KeyNotFoundException("Khong tim thay nguoi dung.");
 
-            if (user.Role != "Seller")
+            if (user.Role != "Shopper")
                 throw new UnauthorizedAccessException("Chi nguoi dung co vai tro Seller moi duoc tao cua hang.");
 
             if (user.MerchantProfile == null || user.MerchantProfile.KycStatus != "APPROVED")
@@ -66,56 +69,51 @@ namespace Doosii.BLL.Services
                 await _context.SaveChangesAsync();
             }
 
+            await transaction.CommitAsync();
             return await GetStoreAsync(store.Id);
         }
 
         public async Task<StoreDto> UpdateStoreAsync(int userId, int storeId, UpdateStoreRequest request)
         {
-            var store = await _context.Stores
-                .Include(s => s.Locations)
-                .FirstOrDefaultAsync(s => s.Id == storeId);
-
-            if (store == null)
-                throw new KeyNotFoundException("Khong tim thay cua hang.");
-
+            var store = await _context.Stores.Include(s => s.Locations)
+                .Include(s => s.Owner).ThenInclude(u => u.MerchantProfile)
+                .FirstOrDefaultAsync(s => s.Id == storeId)
+                ?? throw new KeyNotFoundException("Khong tim thay cua hang.");
             if (store.OwnerId != userId)
                 throw new UnauthorizedAccessException("Ban khong co quyen chinh sua cua hang nay.");
 
-            store.Name = request.Name.Trim();
-            store.Description = request.Description?.Trim();
-            store.Phone = request.Phone?.Trim();
-            store.Address = request.Address?.Trim();
-            store.OpeningHours = request.OpeningHours?.Trim();
-            store.Latitude = request.Latitude;
-            store.Longitude = request.Longitude;
+            request.Name = request.Name?.Trim() ?? string.Empty;
+            request.Description = request.Description?.Trim();
+            request.Phone = request.Phone?.Trim();
+            request.OpeningHours = request.OpeningHours?.Trim();
+            var results = new System.Collections.Generic.List<System.ComponentModel.DataAnnotations.ValidationResult>();
+            if (!System.ComponentModel.DataAnnotations.Validator.TryValidateObject(request,
+                new System.ComponentModel.DataAnnotations.ValidationContext(request), results, true))
+                throw new ArgumentException(string.Join(" ", results.Select(result => result.ErrorMessage)));
+
+            store.Name = request.Name;
+            store.Description = request.Description;
+            store.Phone = request.Phone;
+            store.OpeningHours = request.OpeningHours;
             store.UpdatedAt = DateTime.UtcNow;
-
-            var location = store.Locations.FirstOrDefault();
-            if (location == null)
-            {
-                if (request.Latitude.HasValue || request.Longitude.HasValue)
-                {
-                    location = new StoreLocation { StoreId = store.Id };
-                    _context.StoreLocations.Add(location);
-                }
-            }
-
-            if (location != null)
-            {
-                location.Latitude = request.Latitude;
-                location.Longitude = request.Longitude;
-                location.Address = request.Address?.Trim();
-            }
-
             await _context.SaveChangesAsync();
-            return await GetStoreAsync(store.Id);
+            return MapToStoreDto(store);
+        }
+        public async Task<StoreDto> GetMyStoreAsync(int userId)
+        {
+            var store = await _context.Stores.Include(s => s.Locations)
+                .Include(s => s.Owner).ThenInclude(u => u.MerchantProfile)
+                .FirstOrDefaultAsync(s => s.OwnerId == userId)
+                ?? throw new KeyNotFoundException("Tài khoản chưa có shop.");
+            return MapToStoreDto(store);
         }
 
         public async Task<StoreDto> GetStoreAsync(int storeId)
         {
             var store = await _context.Stores
                 .Include(s => s.Locations)
-                .FirstOrDefaultAsync(s => s.Id == storeId && s.IsActive);
+                .Include(s => s.Owner).ThenInclude(u => u.MerchantProfile)
+                .FirstOrDefaultAsync(s => s.Id == storeId && s.IsActive && s.Owner.Role == "Shopper" && s.Owner.MerchantProfile != null && s.Owner.MerchantProfile.KycStatus == "APPROVED");
 
             if (store == null)
                 throw new KeyNotFoundException("Khong tim thay cua hang hoac cua hang khong hoat dong.");
@@ -135,7 +133,7 @@ namespace Doosii.BLL.Services
             var candidateStores = await _context.Stores
                 .AsNoTracking()
                 .Include(s => s.Locations)
-                .Where(s => s.IsActive &&
+                .Where(s => s.IsActive && s.Owner.Role == "Shopper" && s.Owner.MerchantProfile != null && s.Owner.MerchantProfile.KycStatus == "APPROVED" &&
                     (
                         (s.Latitude != null && s.Latitude >= minLat && s.Latitude <= maxLat &&
                          s.Longitude != null && s.Longitude >= minLng && s.Longitude <= maxLng)
@@ -192,7 +190,7 @@ namespace Doosii.BLL.Services
             var queryable = _context.Stores
                 .AsNoTracking()
                 .Include(s => s.Locations)
-                .Where(s => s.IsActive);
+                .Where(s => s.IsActive && s.Owner.Role == "Shopper" && s.Owner.MerchantProfile != null && s.Owner.MerchantProfile.KycStatus == "APPROVED");
 
             // 1. Loc theo Style tu Product.StyleTags (AND)
             if (!string.IsNullOrWhiteSpace(query.Style))
@@ -302,6 +300,7 @@ namespace Doosii.BLL.Services
         {
             return new NearbyStoreDto
             {
+                OwnerId = s.OwnerId,
                 StoreId = s.Id,
                 StoreName = s.Name,
                 Description = s.Description,
@@ -319,12 +318,27 @@ namespace Doosii.BLL.Services
             };
         }
 
+        private static List<string> ReadMediaUrls(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return new();
+            try { return JsonSerializer.Deserialize<List<string>>(value) ?? new(); }
+            catch (JsonException) { return new(); }
+        }
+
         private static StoreDto MapToStoreDto(Store store)
         {
             return new StoreDto
             {
                 Id = store.Id,
                 OwnerId = store.OwnerId,
+                ApplicationId = store.Owner?.MerchantProfile?.Id,
+                Latitude = store.Latitude,
+                Longitude = store.Longitude,
+                AvatarUrl = store.Owner?.AvatarUrl,
+                ContactEmail = store.Owner?.MerchantProfile?.ContactEmail,
+                EstablishedDate = store.Owner?.MerchantProfile?.EstablishedDate,
+                TaxCode = store.Owner?.MerchantProfile?.TaxCode,
+                MediaUrls = ReadMediaUrls(store.Owner?.MerchantProfile?.ShopMediaUrls),
                 Name = store.Name,
                 Description = store.Description,
                 Phone = store.Phone,

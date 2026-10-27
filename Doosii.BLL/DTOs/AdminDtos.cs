@@ -6,9 +6,21 @@ namespace Doosii.BLL.DTOs
     {
         [Required(ErrorMessage = "Quyết định phê duyệt là bắt buộc.")]
         public bool IsApproved { get; set; }
+        public double? Latitude { get; set; }
+        public double? Longitude { get; set; }
+        public bool LocationConfirmed { get; set; }
 
         [MaxLength(1000, ErrorMessage = "Lý do từ chối tối đa 1000 ký tự.")]
         public string? RejectionReason { get; set; }
+    }
+
+    public class ApproveKycRequest
+    {
+        [Required, Range(-90, 90)]
+        public double? Latitude { get; set; }
+        [Required, Range(-180, 180)]
+        public double? Longitude { get; set; }
+        public bool LocationConfirmed { get; set; }
     }
 
     public class RejectKycRequest
@@ -34,8 +46,9 @@ namespace Doosii.BLL.DTOs
     public class ProcessWithdrawalRequest
     {
         [Required(ErrorMessage = "Quyết định phê duyệt rút tiền là bắt buộc.")]
-        public bool IsApproved { get; set; }
+        public bool? IsApproved { get; set; }
 
+        [Required]
         [MaxLength(500, ErrorMessage = "Ghi chú tối đa 500 ký tự.")]
         public string? AdminNote { get; set; }
     }
@@ -46,6 +59,14 @@ namespace Doosii.BLL.DTOs
         /// Tổng giá trị hàng hóa giao dịch (Gross Merchandise Value)
         /// </summary>
         public decimal TotalGmv { get; set; }
+        public decimal TotalPaidAmount { get; set; }
+        public decimal EscrowHoldingBalance { get; set; }
+        public int PendingDisputes { get; set; }
+        public int PendingWithdrawalCount { get; set; }
+        public decimal PendingWithdrawalAmount { get; set; }
+        public int TotalActiveStores { get; set; }
+        public DateTime GeneratedAt { get; set; }
+        public List<AnalyticsOrderStatus> OrderStatusCounts { get; set; } = new();
 
         /// <summary>
         /// Doanh thu tích lũy từ phí ký quỹ sàn (2.5%)
@@ -78,3 +99,5 @@ namespace Doosii.BLL.DTOs
         public int TotalCustomers { get; set; }
     }
 }
+
+namespace Doosii.BLL.DTOs { public class AnalyticsOrderStatus { public string Status { get; set; } = string.Empty; public int Count { get; set; } } }

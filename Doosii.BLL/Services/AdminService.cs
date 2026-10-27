@@ -1,3 +1,5 @@
+using System.Data;
+using Doosii.DAL.Models.Store;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -57,49 +59,61 @@ namespace Doosii.BLL.Services
 
         public async Task<MerchantProfileDto> ReviewKycRequestAsync(int profileId, ReviewKycRequest request)
         {
+            // Serialize approval with other approval/create operations for this owner.
+            await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
             var profile = await _context.MerchantProfiles
+                .FromSqlInterpolated($"SELECT * FROM [auth].[MerchantProfiles] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {profileId}")
                 .Include(m => m.User)
-                .FirstOrDefaultAsync(m => m.Id == profileId);
-
-            if (profile == null)
+                .FirstOrDefaultAsync(m => m.Id == profileId)
+                ?? throw new KeyNotFoundException($"Không tìm thấy hồ sơ #{profileId}.");
+            var store = await _context.Stores.FirstOrDefaultAsync(s => s.OwnerId == profile.UserId);
+            if (request.IsApproved && profile.KycStatus == "APPROVED" && store != null)
             {
-                throw new KeyNotFoundException($"Không tìm thấy hồ sơ đăng ký KYC #{profileId}.");
+                await transaction.CommitAsync();
+                return MapToMerchantProfileDto(profile);
             }
-
+            if (profile.KycStatus != "PENDING")
+                throw new InvalidOperationException("Hồ sơ đã được xét duyệt. Vui lòng tải lại trang.");
             if (request.IsApproved)
             {
+                if (!request.LocationConfirmed || !request.Latitude.HasValue || !request.Longitude.HasValue ||
+                    !double.IsFinite(request.Latitude.Value) || !double.IsFinite(request.Longitude.Value) ||
+                    request.Latitude < -90 || request.Latitude > 90 || request.Longitude < -180 || request.Longitude > 180)
+                    throw new ArgumentException("Cần xác nhận tọa độ hợp lệ trước khi duyệt.");
+                if (store != null) throw new InvalidOperationException("Tài khoản đã có shop.");
+                if (string.IsNullOrWhiteSpace(profile.Address)) throw new ArgumentException("Hồ sơ cần có địa chỉ kinh doanh.");
+                profile.Latitude = request.Latitude;
+                profile.Longitude = request.Longitude;
                 profile.KycStatus = "APPROVED";
                 profile.RejectionReason = null;
-                profile.User.Role = "Seller"; // Nâng cấp vai trò người dùng thành Người bán (Seller)
+                profile.User.Role = "Shopper";
+                profile.User.UpdatedAt = DateTime.UtcNow;
+                store = new Store { OwnerId = profile.UserId, Name = profile.StoreName,
+                    Phone = profile.Phone, Address = profile.Address, Latitude = profile.Latitude,
+                    Longitude = profile.Longitude, IsActive = true, CreatedAt = DateTime.UtcNow };
+                store.Locations.Add(new StoreLocation { Address = profile.Address,
+                    Latitude = profile.Latitude, Longitude = profile.Longitude });
+                _context.Stores.Add(store);
             }
             else
             {
+                if (string.IsNullOrWhiteSpace(request.RejectionReason)) throw new ArgumentException("Vui lòng nhập lý do từ chối.");
                 profile.KycStatus = "REJECTED";
-                profile.RejectionReason = request.RejectionReason?.Trim() ?? "Không đạt yêu cầu xác thực người bán.";
+                profile.RejectionReason = request.RejectionReason.Trim();
             }
-
             profile.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
-
-            _logger.LogInformation("Admin reviewed KYC #{ProfileId} (User #{UserId}): Status = {Status}",
-                profile.Id, profile.UserId, profile.KycStatus);
-
+            await transaction.CommitAsync();
+            _logger.LogInformation("KYC {ProfileId} reviewed: {Status}", profile.Id, profile.KycStatus);
             return MapToMerchantProfileDto(profile);
         }
 
-        public async Task<MerchantProfileDto> ApproveKycRequestAsync(int profileId)
-        {
-            return await ReviewKycRequestAsync(profileId, new ReviewKycRequest { IsApproved = true });
-        }
+        public Task<MerchantProfileDto> ApproveKycRequestAsync(int profileId, ApproveKycRequest request)
+            => ReviewKycRequestAsync(profileId, new ReviewKycRequest { IsApproved = true,
+                Latitude = request.Latitude, Longitude = request.Longitude, LocationConfirmed = request.LocationConfirmed });
 
-        public async Task<MerchantProfileDto> RejectKycRequestAsync(int profileId, string? reason)
-        {
-            return await ReviewKycRequestAsync(profileId, new ReviewKycRequest
-            {
-                IsApproved = false,
-                RejectionReason = reason
-            });
-        }
+        public Task<MerchantProfileDto> RejectKycRequestAsync(int profileId, string? reason)
+            => ReviewKycRequestAsync(profileId, new ReviewKycRequest { IsApproved = false, RejectionReason = reason });
 
         private static MerchantProfileDto MapToMerchantProfileDto(MerchantProfile m)
         {
@@ -146,228 +160,118 @@ namespace Doosii.BLL.Services
             };
         }
 
-        public async Task<List<DisputeResponse>> GetDisputesAsync(string? status)
+        public async Task<PagedResult<DisputeResponse>> GetDisputesAsync(string? status, int page = 1, int pageSize = 20)
         {
-            var query = _context.Disputes
-                .Include(d => d.Order)
-                .Include(d => d.RaisedByUser)
-                .AsQueryable();
-
+            if (page is < 1 or > 1000000 || pageSize is < 1 or > 50) throw new ArgumentException("Phân trang không hợp lệ.");
+            var query = _context.Disputes.AsNoTracking().Include(d => d.RaisedByUser).AsQueryable();
             if (!string.IsNullOrWhiteSpace(status))
             {
-                query = query.Where(d => d.Status.ToUpper() == status.Trim().ToUpper());
+                status = status.Trim().ToUpperInvariant();
+                if (!new[] { DisputeStatus.PendingReview, DisputeStatus.RefundedBuyer, DisputeStatus.ReleasedSeller }.Contains(status)) throw new ArgumentException("Trạng thái không hợp lệ.");
+                query = query.Where(d => d.Status == status);
             }
-
-            var list = await query.OrderByDescending(d => d.CreatedAt).ToListAsync();
-
-            return list.Select(d => MapToDisputeResponse(d, d.RaisedByUser?.FullName ?? "Unknown")).ToList();
+            var count = await query.CountAsync();
+            var rows = await query.OrderByDescending(d => d.CreatedAt).ThenByDescending(d => d.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+            return new() { Items = rows.Select(d => MapToDisputeResponse(d, d.RaisedByUser.FullName)).ToList(), TotalCount = count, Page = page, PageSize = pageSize };
         }
 
         public async Task<DisputeResponse> ArbitrateDisputeAsync(int disputeId, ArbitrateDisputeRequest request)
         {
-            var dispute = await _context.Disputes
-                .Include(d => d.RaisedByUser)
-                .Include(d => d.Order)
-                    .ThenInclude(o => o.Items)
-                .Include(d => d.Order)
-                    .ThenInclude(o => o.EscrowTransactions)
-                .FirstOrDefaultAsync(d => d.Id == disputeId);
-
-            if (dispute == null)
-            {
-                throw new KeyNotFoundException($"Không tìm thấy khiếu nại #{disputeId}.");
-            }
-
-            if (dispute.Status != DisputeStatus.PendingReview)
-            {
-                throw new InvalidOperationException($"Khiếu nại này đã được phân xử trước đó (Trạng thái: {dispute.Status}).");
-            }
-
-            var order = dispute.Order;
-
+            if (string.IsNullOrWhiteSpace(request.AdminVerdict) || request.AdminVerdict.Trim().Length > 1000 || !new[] { "REFUND_BUYER", "RELEASE_SELLER" }.Contains(request.Verdict))
+                throw new ArgumentException("Chọn quyết định hợp lệ và giải trình từ 1 đến 1000 ký tự.");
+            var orderId = await _context.Disputes.AsNoTracking().Where(d => d.Id == disputeId).Select(d => (int?)d.OrderId).SingleOrDefaultAsync()
+                ?? throw new KeyNotFoundException("Không tìm thấy khiếu nại.");
             await using var transaction = await _context.Database.BeginTransactionAsync();
-            try
+            var order = await OrderLifecycle.LockAsync(_context, orderId);
+            var dispute = order.Dispute ?? throw new KeyNotFoundException("Không tìm thấy khiếu nại.");
+            if (dispute.Id != disputeId || dispute.Status != DisputeStatus.PendingReview || order.Status != OrderStatus.Disputed)
+                throw new InvalidOperationException("Khiếu nại hoặc đơn hàng đã được xử lý. Vui lòng tải lại.");
+            var funds = order.EscrowTransactions.Where(e => e.Status == EscrowStatus.Holding || e.Status == EscrowStatus.Released).ToList();
+            if (funds.Count != 1) throw new InvalidOperationException("Không xác định được khoản ký quỹ. Chưa thể phân xử.");
+            var escrow = funds[0];
+            var now = DateTime.UtcNow;
+            if (request.Verdict == "REFUND_BUYER")
             {
-                if (request.Verdict.Equals("REFUND_BUYER", StringComparison.OrdinalIgnoreCase))
-                {
-                    // Phán quyết: Hoàn tiền 100% cho người mua
-                    dispute.Status = DisputeStatus.RefundedBuyer;
-                    dispute.AdminVerdict = request.AdminVerdict.Trim();
-                    dispute.ResolvedAt = DateTime.UtcNow;
-
-                    order.Status = OrderStatus.Refunded;
-                    order.UpdatedAt = DateTime.UtcNow;
-
-                    // Cập nhật trạng thái quỹ ký quỹ sang REFUNDED
-                    foreach (var escrow in order.EscrowTransactions.Where(e => e.Status == EscrowStatus.Holding))
-                    {
-                        escrow.Status = EscrowStatus.Refunded;
-                    }
-
-                    // Mở khóa lại các sản phẩm về AVAILABLE
-                    foreach (var item in order.Items)
-                    {
-                        await _productLockService.UnlockProductAsync(item.ProductId);
-                    }
-                }
-                else if (request.Verdict.Equals("RELEASE_SELLER", StringComparison.OrdinalIgnoreCase))
-                {
-                    // Phán quyết: Bác khiếu nại, giải ngân tiền cho người bán
-                    dispute.Status = DisputeStatus.ReleasedSeller;
-                    dispute.AdminVerdict = request.AdminVerdict.Trim();
-                    dispute.ResolvedAt = DateTime.UtcNow;
-
-                    order.Status = OrderStatus.CompletedReleased;
-                    order.CompletedAt = DateTime.UtcNow;
-                    order.UpdatedAt = DateTime.UtcNow;
-
-                    // Giải ngân quỹ ký quỹ
-                    var escrow = order.EscrowTransactions.FirstOrDefault(e => e.Status == EscrowStatus.Holding);
-                    if (escrow != null)
-                    {
-                        escrow.Status = EscrowStatus.Released;
-                        escrow.ReleasedAt = DateTime.UtcNow;
-                    }
-                    else
-                    {
-                        _context.EscrowTransactions.Add(new EscrowTransaction
-                        {
-                            OrderId = order.Id,
-                            Amount = order.TotalAmount,
-                            Status = EscrowStatus.Released,
-                            ReleasedAt = DateTime.UtcNow,
-                            CreatedAt = DateTime.UtcNow
-                        });
-                    }
-
-                    // Đánh dấu sản phẩm là SOLD vĩnh viễn
-                    foreach (var item in order.Items)
-                    {
-                        await _productLockService.MarkProductAsSoldAsync(item.ProductId);
-                    }
-                }
-                else
-                {
-                    throw new ArgumentException("Phán quyết không hợp lệ. Phải là REFUND_BUYER hoặc RELEASE_SELLER.");
-                }
-
-                await _context.SaveChangesAsync();
-                await transaction.CommitAsync();
-
-                _logger.LogInformation("Admin arbitrated Dispute #{DisputeId} (Order #{OrderId}): Verdict = {Verdict}",
-                    dispute.Id, order.Id, dispute.Status);
-
-                return MapToDisputeResponse(dispute, dispute.RaisedByUser?.FullName ?? "Unknown");
+                dispute.Status = DisputeStatus.RefundedBuyer;
+                order.Status = OrderStatus.Refunded;
+                escrow.Status = EscrowStatus.Refunded;
+                foreach (var item in order.Items) await _productLockService.UnlockProductAsync(item.ProductId, order.Id);
             }
-            catch (Exception ex)
+            else
             {
-                await transaction.RollbackAsync();
-                _logger.LogError(ex, "Lỗi khi Admin phân xử khiếu nại #{DisputeId}", disputeId);
-                throw;
+                dispute.Status = DisputeStatus.ReleasedSeller;
+                order.Status = OrderStatus.CompletedReleased;
+                order.CompletedAt ??= now;
+                if (escrow.Status == EscrowStatus.Holding) { escrow.Status = EscrowStatus.Released; escrow.ReleasedAt = now; }
+                foreach (var item in order.Items) await _productLockService.MarkProductAsSoldAsync(item.ProductId, order.Id);
             }
+            dispute.AdminVerdict = request.AdminVerdict.Trim(); dispute.ResolvedAt = now; order.UpdatedAt = now;
+            await _context.SaveChangesAsync(); await transaction.CommitAsync();
+            _logger.LogInformation("Dispute {DisputeId} of order {OrderId} resolved as {Status}", dispute.Id, order.Id, dispute.Status);
+            return MapToDisputeResponse(dispute, order.Buyer.FullName);
         }
 
-        public async Task<List<WithdrawalResponse>> GetWithdrawalsAsync(string? status)
+        public async Task<PagedResult<WithdrawalResponse>> GetWithdrawalsAsync(string? status, int page = 1, int pageSize = 20)
         {
-            var query = _context.WithdrawalRequests.AsQueryable();
-
-            if (!string.IsNullOrWhiteSpace(status))
-            {
-                query = query.Where(w => w.Status.ToUpper() == status.Trim().ToUpper());
-            }
-
-            var list = await query.OrderByDescending(w => w.CreatedAt).ToListAsync();
-
-            return list.Select(w => new WithdrawalResponse
-            {
-                Id = w.Id,
-                UserId = w.UserId,
-                BankName = w.BankName,
-                AccountNumber = w.AccountNumber,
-                AccountHolder = w.AccountHolder,
-                Amount = w.Amount,
-                Status = w.Status,
-                AdminNote = w.AdminNote,
-                CreatedAt = w.CreatedAt,
-                ProcessedAt = w.ProcessedAt
-            }).ToList();
+            var filter = status?.Trim().ToUpperInvariant();
+            if (page < 1 || page > 1000000 || pageSize < 1 || pageSize > 50 || !string.IsNullOrEmpty(filter) && filter is not ("PENDING" or "APPROVED" or "REJECTED")) throw new ArgumentException("Bộ lọc hoặc phân trang không hợp lệ.");
+            var query = _context.WithdrawalRequests.AsNoTracking().AsQueryable();
+            if (!string.IsNullOrEmpty(filter)) query = query.Where(w => w.Status == filter);
+            var count = await query.CountAsync();
+            var items = await query.OrderByDescending(w => w.CreatedAt).ThenByDescending(w => w.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+            return new PagedResult<WithdrawalResponse> { Items = items.Select(WalletService.Map).ToList(), TotalCount = count, Page = page, PageSize = pageSize };
         }
 
-        public async Task<WithdrawalResponse> ProcessWithdrawalAsync(int withdrawalId, ProcessWithdrawalRequest request)
+        public async Task<WithdrawalResponse> ProcessWithdrawalAsync(int withdrawalId, ProcessWithdrawalRequest request, int actorId)
         {
-            var withdrawal = await _context.WithdrawalRequests.FindAsync(withdrawalId);
-            if (withdrawal == null)
+            if (!request.IsApproved.HasValue || string.IsNullOrWhiteSpace(request.AdminNote) || request.AdminNote.Trim().Length > 500) throw new ArgumentException("Chọn quyết định và nhập giải trình tối đa 500 ký tự.");
+            await using var tx = await _context.Database.BeginTransactionAsync();
+            if (!await _context.Users.AsNoTracking().AnyAsync(u => u.Id == actorId && u.Role == "Admin")) throw new Doosii.BLL.Exceptions.ServiceException(403, "Chỉ quản trị viên hiện tại được xử lý.", "ADMIN_REQUIRED");
+            var sellerId = await _context.WithdrawalRequests.AsNoTracking().Where(w => w.Id == withdrawalId).Select(w => (int?)w.UserId).SingleOrDefaultAsync() ?? throw new KeyNotFoundException("Không tìm thấy yêu cầu rút tiền.");
+            await WalletRules.LockAsync(_context, sellerId);
+            var withdrawal = await _context.WithdrawalRequests.SingleAsync(w => w.Id == withdrawalId);
+            await _context.Entry(withdrawal).ReloadAsync();
+            if (withdrawal.Status != WithdrawalStatus.Pending) throw new Doosii.BLL.Exceptions.ServiceException(409, "Yêu cầu đã được xử lý. Hãy tải lại danh sách.", "ALREADY_PROCESSED");
+            if (actorId == sellerId) throw new Doosii.BLL.Exceptions.ServiceException(403, "Không được tự xử lý yêu cầu rút của mình.", "SELF_REVIEW");
+            if (request.IsApproved.Value)
             {
-                throw new KeyNotFoundException($"Không tìm thấy yêu cầu rút tiền #{withdrawalId}.");
+                await WalletRules.EnsureSellerAsync(_context, sellerId);
+                var wallet = await WalletService.CalculateAsync(_context, sellerId);
+                if (wallet.DeficitAmount > 0) throw new Doosii.BLL.Exceptions.ServiceException(409, "Số dư không còn đủ để duyệt. Cần từ chối yêu cầu hoặc đối soát.", "INSUFFICIENT_FUNDS");
             }
-
-            if (withdrawal.Status != WithdrawalStatus.Pending)
-            {
-                throw new InvalidOperationException($"Yêu cầu rút tiền này đã được xử lý trước đó (Trạng thái: {withdrawal.Status}).");
-            }
-
-            withdrawal.Status = request.IsApproved ? WithdrawalStatus.Approved : WithdrawalStatus.Rejected;
-            withdrawal.AdminNote = request.AdminNote?.Trim();
-            withdrawal.ProcessedAt = DateTime.UtcNow;
-
-            await _context.SaveChangesAsync();
-
-            _logger.LogInformation("Admin processed Withdrawal #{WithdrawalId} (User #{UserId}): Status = {Status}",
-                withdrawal.Id, withdrawal.UserId, withdrawal.Status);
-
-            return new WithdrawalResponse
-            {
-                Id = withdrawal.Id,
-                UserId = withdrawal.UserId,
-                BankName = withdrawal.BankName,
-                AccountNumber = withdrawal.AccountNumber,
-                AccountHolder = withdrawal.AccountHolder,
-                Amount = withdrawal.Amount,
-                Status = withdrawal.Status,
-                AdminNote = withdrawal.AdminNote,
-                CreatedAt = withdrawal.CreatedAt,
-                ProcessedAt = withdrawal.ProcessedAt
-            };
+            withdrawal.Status = request.IsApproved.Value ? WithdrawalStatus.Approved : WithdrawalStatus.Rejected;
+            withdrawal.AdminNote = request.AdminNote.Trim(); withdrawal.ProcessedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync(); await tx.CommitAsync();
+            _logger.LogInformation("Admin {ActorId} processed withdrawal {WithdrawalId}: {Status}", actorId, withdrawalId, withdrawal.Status);
+            return WalletService.Map(withdrawal);
         }
 
         public async Task<AdminAnalyticsResponse> GetAnalyticsAsync()
         {
-            // 1. GMV: Tổng giá trị các đơn hàng đã thanh toán và vận hành
-            var paidStatuses = new[]
-            {
-                OrderStatus.EscrowHolding,
-                OrderStatus.InTransit,
-                OrderStatus.CompletedReleased,
-                OrderStatus.Disputed
-            };
-
-            var totalGmv = await _context.Orders
-                .Where(o => paidStatuses.Contains(o.Status))
-                .SumAsync(o => o.TotalAmount);
-
-            // 2. Doanh thu phí sàn: 2.5% từ các đơn đã hoàn tất
-            var escrowRevenue = await _context.Orders
-                .Where(o => o.Status == OrderStatus.CompletedReleased)
-                .SumAsync(o => o.EscrowFee);
-
-            // 3. Số lượng đơn hàng
-            var totalOrders = await _context.Orders.CountAsync();
-            var completedOrders = await _context.Orders.CountAsync(o => o.Status == OrderStatus.CompletedReleased);
-            var disputedOrders = await _context.Orders.CountAsync(o => o.Status == OrderStatus.Disputed || o.Dispute != null);
-
-            // 4. Số lượng tài khoản
-            var totalSellers = await _context.Users.CountAsync(u => u.Role == "Seller");
-            var totalCustomers = await _context.Users.CountAsync(u => u.Role == "Customer" || u.Role == "User");
-
-            return new AdminAnalyticsResponse
-            {
-                TotalGmv = totalGmv,
-                PlatformEscrowRevenue = escrowRevenue,
-                TotalOrders = totalOrders,
-                CompletedOrders = completedOrders,
-                DisputedOrders = disputedOrders,
-                TotalVerifiedSellers = totalSellers,
-                TotalCustomers = totalCustomers
+            // Group once so the order counters and status distribution use the same query result.
+            var orders = await _context.Orders.AsNoTracking().GroupBy(o => o.Status).Select(g => new {
+                Status = g.Key, Count = g.Count(), ProductValue = g.Sum(o => o.ProductPrice),
+                PaidValue = g.Sum(o => o.TotalAmount), Fee = g.Sum(o => o.EscrowFee),
+                WithDispute = g.Count(o => o.Dispute != null)
+            }).ToListAsync();
+            var paid = orders.Where(g => g.Status is OrderStatus.EscrowHolding or OrderStatus.InTransit or OrderStatus.CompletedReleased or OrderStatus.CodCompleted or OrderStatus.Disputed).ToList();
+            var holding = await _context.EscrowTransactions.AsNoTracking().Where(e => e.Status == EscrowStatus.Holding).SumAsync(e => (decimal?)e.Amount) ?? 0;
+            var pendingDisputes = await _context.Disputes.AsNoTracking().CountAsync(d => d.Status == "PENDING_REVIEW");
+            var pendingWithdrawals = await _context.WithdrawalRequests.AsNoTracking().Where(w => w.Status == WithdrawalStatus.Pending).GroupBy(w => 1).Select(g => new { Count = g.Count(), Amount = g.Sum(w => w.Amount) }).SingleOrDefaultAsync();
+            var users = await _context.Users.AsNoTracking().GroupBy(u => u.Role).Select(g => new { Role = g.Key, Count = g.Count(), Verified = g.Count(u => u.MerchantProfile != null && u.MerchantProfile.KycStatus == "APPROVED") }).ToListAsync();
+            var activeStores = await _context.Stores.AsNoTracking().CountAsync(s => s.IsActive && s.Owner.Role == "Shopper" && s.Owner.MerchantProfile != null && s.Owner.MerchantProfile.KycStatus == "APPROVED");
+            return new AdminAnalyticsResponse {
+                TotalGmv = paid.Sum(g => g.ProductValue), TotalPaidAmount = paid.Sum(g => g.PaidValue),
+                PlatformEscrowRevenue = orders.Where(g => g.Status == OrderStatus.CompletedReleased).Sum(g => g.Fee),
+                EscrowHoldingBalance = holding, TotalOrders = orders.Sum(g => g.Count),
+                CompletedOrders = orders.Where(g => g.Status == OrderStatus.CompletedReleased || g.Status == OrderStatus.CodCompleted).Sum(g => g.Count),
+                DisputedOrders = orders.Sum(g => g.Status == OrderStatus.Disputed ? g.Count : g.WithDispute),
+                PendingDisputes = pendingDisputes, PendingWithdrawalCount = pendingWithdrawals?.Count ?? 0,
+                PendingWithdrawalAmount = pendingWithdrawals?.Amount ?? 0,
+                TotalVerifiedSellers = users.Where(g => g.Role == "Shopper").Sum(g => g.Verified),
+                TotalCustomers = users.Where(g => g.Role is "CasualUser" or "User").Sum(g => g.Count),
+                TotalActiveStores = activeStores, GeneratedAt = DateTime.UtcNow,
+                OrderStatusCounts = orders.OrderBy(g => g.Status).Select(g => new AnalyticsOrderStatus { Status = g.Status, Count = g.Count }).ToList()
             };
         }
 

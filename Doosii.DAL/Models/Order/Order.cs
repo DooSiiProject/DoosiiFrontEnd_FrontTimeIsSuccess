@@ -12,6 +12,9 @@ namespace Doosii.DAL.Models.Order
         public const string Disputed = "DISPUTED";
         public const string Refunded = "REFUNDED";
         public const string Cancelled = "CANCELLED";
+        public const string CodPending = "COD_PENDING";
+        public const string CodInTransit = "COD_IN_TRANSIT";
+        public const string CodCompleted = "COD_COMPLETED";
     }
 
     [Table("Orders")]
@@ -48,6 +51,7 @@ namespace Doosii.DAL.Models.Order
         [Required]
         [MaxLength(50)]
         public string Status { get; set; } = OrderStatus.PendingPayment;
+        [Required, MaxLength(20)] public string PaymentMethod { get; set; } = "PAYOS";
 
         [MaxLength(100)]
         public string? ShippingCarrier { get; set; }
@@ -77,6 +81,12 @@ namespace Doosii.DAL.Models.Order
         public DateTime? CompletedAt { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+        public Guid? ClientRequestId { get; set; }
+        [Timestamp] public byte[] RowVersion { get; set; } = Array.Empty<byte>();
+        public string? PaymentDetailsJson { get; set; }
+        [MaxLength(100)] public string? PaymentLinkId { get; set; }
+        public DateTime? DeliveredAt { get; set; }
 
         public DateTime? UpdatedAt { get; set; }
 

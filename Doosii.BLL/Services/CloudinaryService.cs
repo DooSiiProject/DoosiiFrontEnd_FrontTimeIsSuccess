@@ -35,7 +35,7 @@ namespace Doosii.BLL.Services
         private static readonly HashSet<string> AllowedSubFolders =
             new(StringComparer.OrdinalIgnoreCase)
             {
-                "products", "stores", "kyc", "reviews", "avatars", "forum", ""
+                "products", "stores", "kyc", "reviews", "avatars", "forum", "disputes", ""
             };
 
         private const long MaxFileSizeBytes = 5 * 1024 * 1024; // 5 MB
@@ -178,7 +178,7 @@ namespace Doosii.BLL.Services
                 throw new ServiceException(400, "PublicId is required.", "INVALID_PUBLIC_ID");
             }
 
-            var deleteParams = new DeletionParams(publicId);
+            var deleteParams = new DeletionParams(publicId) { Invalidate = true };
 
             try
             {

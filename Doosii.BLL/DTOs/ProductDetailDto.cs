@@ -1,4 +1,4 @@
-﻿namespace Doosii.BLL.DTOs
+namespace Doosii.BLL.DTOs
 {
     public class ProductDetailStoreDto
     {
@@ -13,6 +13,8 @@
 
     public class ProductDetailDto
     {
+        public int? ProductGroupId { get; set; }
+        public int SellerId { get; set; }
         public int ProductId { get; set; }
         public string Title { get; set; } = string.Empty;
         public string? Description { get; set; }
@@ -21,6 +23,9 @@
         public int ConditionPercent { get; set; }
         public string Status { get; set; } = string.Empty;
         public string? StyleTags { get; set; }
+        public ProductListingDetails? Details { get; set; }
+        public bool IsPublished { get; set; }
+        public string Version { get; set; } = "";
         public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
         public ProductDetailStoreDto Store { get; set; } = null!;

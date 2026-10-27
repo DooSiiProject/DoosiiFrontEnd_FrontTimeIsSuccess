@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
 namespace Doosii.BLL.DTOs
 {
@@ -57,5 +57,21 @@ namespace Doosii.BLL.DTOs
         public int PageSize { get; set; }
         public int TotalPages { get; set; }
         public List<StoreReviewDto> Items { get; set; } = new();
+    }
+}
+
+namespace Doosii.BLL.DTOs
+{
+    public class MyStoreReviewDto
+    {
+        public StoreReviewDto? Review { get; set; }
+        public bool CanCreate { get; set; }
+        public int? EligibleOrderId { get; set; }
+        public string Reason { get; set; } = "";
+    }
+    public class OrderReviewShopDto
+    {
+        public int StoreId { get; set; }
+        public string StoreName { get; set; } = "";
     }
 }

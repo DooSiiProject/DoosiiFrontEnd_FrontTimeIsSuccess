@@ -12,8 +12,10 @@ namespace Doosii.API.Controllers
     /// POST /api/forum/posts/spot    - Tao bai (can dang nhap)
     /// GET  /api/forum/posts/spot/{id} - Xem chi tiet (public)
     /// </summary>
+    [CommunityValidation]
     [ApiController]
     [Route("api/forum/posts/spot")]
+    [LegacyCommunityUnavailable]
     public class SpotSharingController : ControllerBase
     {
         private readonly ISpotSharingService _spotService;
@@ -109,6 +111,7 @@ namespace Doosii.API.Controllers
     /// </summary>
     [ApiController]
     [Route("api/stores/{storeId:int}/spot-posts")]
+    [LegacyCommunityUnavailable]
     public class StoreSpotPostsController : ControllerBase
     {
         private readonly ISpotSharingService _spotService;

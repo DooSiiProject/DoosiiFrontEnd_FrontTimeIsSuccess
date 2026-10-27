@@ -106,6 +106,7 @@ namespace Doosii.API.Controllers
         /// Gửi mã OTP 6 số để khôi phục mật khẩu qua Email
         /// </summary>
         [HttpPost("forgot-password")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("password-recovery")]
         public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
         {
             try
@@ -113,9 +114,9 @@ namespace Doosii.API.Controllers
                 await _authService.ForgotPasswordAsync(request.Email);
                 return Ok(ApiResponse<string>.SuccessResponse("Mã OTP đã được gửi đến email của bạn nếu tài khoản tồn tại."));
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return StatusCode(500, ApiResponse<string>.ErrorResponse("Đã xảy ra lỗi máy chủ nội bộ.", new List<string> { ex.Message }));
+                return StatusCode(503, ApiResponse<string>.ErrorResponse("Chưa thể xử lý khôi phục mật khẩu. Vui lòng thử lại sau."));
             }
         }
 
@@ -123,6 +124,7 @@ namespace Doosii.API.Controllers
         /// Xác thực mã OTP 6 số
         /// </summary>
         [HttpPost("verify-otp")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("password-recovery")]
         public async Task<IActionResult> VerifyOtp([FromBody] VerifyOtpRequest request)
         {
             try
@@ -134,9 +136,9 @@ namespace Doosii.API.Controllers
             {
                 return BadRequest(ApiResponse<bool>.ErrorResponse(ex.Message));
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return StatusCode(500, ApiResponse<bool>.ErrorResponse("Đã xảy ra lỗi máy chủ nội bộ.", new List<string> { ex.Message }));
+                return StatusCode(503, ApiResponse<bool>.ErrorResponse("Chưa thể xác minh mã. Vui lòng thử lại sau."));
             }
         }
 
@@ -144,6 +146,7 @@ namespace Doosii.API.Controllers
         /// Đặt lại mật khẩu mới bằng mã OTP
         /// </summary>
         [HttpPost("reset-password")]
+        [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("password-recovery")]
         public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
         {
             try
@@ -159,9 +162,9 @@ namespace Doosii.API.Controllers
             {
                 return NotFound(ApiResponse<string>.ErrorResponse(ex.Message));
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return StatusCode(500, ApiResponse<string>.ErrorResponse("Đã xảy ra lỗi máy chủ nội bộ.", new List<string> { ex.Message }));
+                return StatusCode(503, ApiResponse<string>.ErrorResponse("Chưa thể xử lý khôi phục mật khẩu. Vui lòng thử lại sau."));
             }
         }
 

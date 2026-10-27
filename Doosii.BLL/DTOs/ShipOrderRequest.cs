@@ -12,6 +12,8 @@ namespace Doosii.BLL.DTOs
         [MaxLength(100, ErrorMessage = "Mã vận đơn tối đa 100 ký tự.")]
         public string TrackingCode { get; set; } = string.Empty;
 
+        [Required] public string Version { get; set; } = "";
+
         [MaxLength(500, ErrorMessage = "Đường dẫn ảnh kiện hàng tối đa 500 ký tự.")]
         public string? PackageImageUrl { get; set; }
     }

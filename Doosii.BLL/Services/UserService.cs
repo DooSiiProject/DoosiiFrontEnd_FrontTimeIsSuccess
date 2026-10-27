@@ -26,10 +26,9 @@ namespace Doosii.BLL.Services
 
             user.FullName = request.FullName.Trim();
             user.AvatarUrl = request.AvatarUrl?.Trim();
-            user.DeliveryAddress = request.DeliveryAddress?.Trim();
             user.UpdatedAt = DateTime.UtcNow;
 
-            await _context.SaveChangesAsync();
+            await Doosii.DAL.Data.UploadedImageGuard.SaveChangesAsync(_context);
 
             return MapToUserDto(user);
         }
@@ -42,7 +41,7 @@ namespace Doosii.BLL.Services
                 throw new KeyNotFoundException("Khong tim thay nguoi dung.");
             }
 
-            if (user.Role != "Customer")
+            if (user.Role != "CasualUser")
             {
                 throw new InvalidOperationException("Chi nguoi dung co vai tro Customer moi duoc nop ho so Seller.");
             }
@@ -117,7 +116,7 @@ namespace Doosii.BLL.Services
                 existingProfile.RejectionReason = null;
                 existingProfile.UpdatedAt = DateTime.UtcNow;
 
-                await _context.SaveChangesAsync();
+                await Doosii.DAL.Data.UploadedImageGuard.SaveChangesAsync(_context);
                 return MapToMerchantProfileDto(existingProfile);
             }
 
@@ -144,7 +143,7 @@ namespace Doosii.BLL.Services
             };
 
             _context.MerchantProfiles.Add(profile);
-            await _context.SaveChangesAsync();
+            await Doosii.DAL.Data.UploadedImageGuard.SaveChangesAsync(_context);
 
             return MapToMerchantProfileDto(profile);
         }
@@ -221,7 +220,7 @@ namespace Doosii.BLL.Services
             }
 
             profile.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
+            await Doosii.DAL.Data.UploadedImageGuard.SaveChangesAsync(_context);
 
             return MapToMerchantProfileDto(profile);
         }
@@ -242,7 +241,7 @@ namespace Doosii.BLL.Services
             }
 
             _context.MerchantProfiles.Remove(profile);
-            await _context.SaveChangesAsync();
+            await Doosii.DAL.Data.UploadedImageGuard.SaveChangesAsync(_context);
         }
 
         private static UserDto MapToUserDto(User user)
@@ -253,6 +252,9 @@ namespace Doosii.BLL.Services
                 Email = user.Email,
                 FullName = user.FullName,
                 Role = user.Role,
+                AvatarUrl = user.AvatarUrl,
+                Status = user.Role == "Banned" ? "banned" : "active",
+                IsGoogle = user.IsGoogle,
                 CreatedAt = user.CreatedAt
             };
         }

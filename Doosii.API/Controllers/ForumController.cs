@@ -7,8 +7,10 @@ using Doosii.BLL.Interfaces;
 
 namespace Doosii.API.Controllers
 {
+    [CommunityValidation]
     [ApiController]
     [Route("api/forum")]
+    [LegacyCommunityUnavailable]
     public class ForumController : ControllerBase
     {
         private readonly IPassPostService _passPostService;
@@ -145,6 +147,7 @@ namespace Doosii.API.Controllers
         /// </summary>
         [HttpPost("posts/{postId:int}/comments")]
         [Authorize]
+        [NonAction]
         public async Task<IActionResult> CreateComment(int postId, [FromBody] CreateCommentRequest request)
         {
             if (!ModelState.IsValid)
@@ -179,6 +182,7 @@ namespace Doosii.API.Controllers
         /// </summary>
         [HttpGet("posts/{postId:int}/comments")]
         [AllowAnonymous]
+        [NonAction]
         public async Task<IActionResult> GetComments(int postId)
         {
             try
@@ -202,6 +206,7 @@ namespace Doosii.API.Controllers
         /// </summary>
         [HttpDelete("comments/{commentId:int}")]
         [Authorize]
+        [NonAction]
         public async Task<IActionResult> DeleteComment(int commentId)
         {
             var userId = GetCurrentUserId();
@@ -236,6 +241,7 @@ namespace Doosii.API.Controllers
         /// </summary>
         [HttpPost("posts/{postId:int}/reactions")]
         [Authorize]
+        [NonAction]
         public async Task<IActionResult> ToggleReaction(int postId, [FromBody] CreateReactionRequest request)
         {
             if (!ModelState.IsValid)
@@ -270,6 +276,7 @@ namespace Doosii.API.Controllers
         /// </summary>
         [HttpGet("posts/{postId:int}/reactions")]
         [AllowAnonymous]
+        [NonAction]
         public async Task<IActionResult> GetReactions(int postId)
         {
             try

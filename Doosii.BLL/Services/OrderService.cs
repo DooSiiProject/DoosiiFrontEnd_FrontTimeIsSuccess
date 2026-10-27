@@ -1,3 +1,5 @@
+using System.Data;
+using Microsoft.Extensions.Configuration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Doosii.BLL.DTOs;
@@ -13,84 +15,76 @@ namespace Doosii.BLL.Services
         private readonly IProductLockService _productLockService;
         private readonly ILogger<OrderService> _logger;
 
+        private readonly IConfiguration _configuration;
         public const decimal EscrowFeeRate = 0.025m; // 2.5% platform escrow fee
 
         public OrderService(
             AppDbContext context,
             IProductLockService productLockService,
-            ILogger<OrderService> logger)
+            ILogger<OrderService> logger, IConfiguration configuration)
         {
             _context = context;
             _productLockService = productLockService;
-            _logger = logger;
+            _logger = logger; _configuration = configuration;
         }
 
+        private async Task<Doosii.DAL.Models.Store.Product> PurchasableAsync(int buyerId, int productId, bool locked)
+        {
+            var buyer = await _context.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Id == buyerId);
+            if (buyer == null || !new[] { "CasualUser", "CasualSeller", "Shopper" }.Contains(buyer.Role)) throw new UnauthorizedAccessException("Tài khoản không được mua hàng.");
+            var query = locked ? _context.Products.FromSqlInterpolated($"SELECT * FROM [store].[Products] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {productId}") : _context.Products.AsNoTracking().Where(p => p.Id == productId);
+            var product = await query.Include(p => p.Images).Include(p => p.Store).ThenInclude(st => st.Owner).ThenInclude(u => u.MerchantProfile).SingleOrDefaultAsync()
+                ?? throw new KeyNotFoundException("Không tìm thấy sản phẩm.");
+            if (locked)
+            {
+                // Keep eligibility stable without taking serializable range locks on the orders index.
+                await _context.Stores.FromSqlInterpolated($"SELECT * FROM [store].[Stores] WITH (HOLDLOCK) WHERE [Id] = {product.StoreId}").LoadAsync();
+                await _context.Users.FromSqlInterpolated($"SELECT * FROM [auth].[Users] WITH (HOLDLOCK) WHERE [Id] = {product.Store.OwnerId}").LoadAsync();
+                await _context.MerchantProfiles.FromSqlInterpolated($"SELECT * FROM [auth].[MerchantProfiles] WITH (HOLDLOCK) WHERE [UserId] = {product.Store.OwnerId}").LoadAsync();
+                await _context.Entry(product.Store).ReloadAsync();
+                await _context.Entry(product.Store.Owner).ReloadAsync();
+                if (product.Store.Owner.MerchantProfile != null) await _context.Entry(product.Store.Owner.MerchantProfile).ReloadAsync();
+            }
+            if (product.Store.OwnerId == buyerId) throw new InvalidOperationException("Bạn không thể mua sản phẩm của mình.");
+            if (!product.IsPublished || !product.Store.IsActive || product.Store.Owner.Role != "Shopper" || product.Store.Owner.MerchantProfile?.KycStatus != "APPROVED") throw new InvalidOperationException("Sản phẩm hoặc shop không còn được bán.");
+            if (product.Status != "AVAILABLE") throw new InvalidOperationException("Sản phẩm đang được giữ hoặc đã bán.");
+            return product;
+        }
+        private OrderQuoteResponse Quote(Doosii.DAL.Models.Store.Product product)
+        {
+            var shipping = _configuration.GetValue<decimal?>("Orders:ShippingFee") ?? 30000m;
+            if (shipping < 0 || shipping != decimal.Truncate(shipping)) throw new InvalidOperationException("Phí vận chuyển trên máy chủ không hợp lệ.");
+            var fee = Math.Round(product.Price * EscrowFeeRate, 0, MidpointRounding.AwayFromZero);
+            return new OrderQuoteResponse { ProductId = product.Id, SellerId = product.Store.OwnerId, ProductName = product.Title,
+                Thumbnail = product.Images.OrderBy(i => i.DisplayOrder).ThenBy(i => i.Id).FirstOrDefault()?.ImageUrl,
+                ProductPrice = product.Price, ShippingFee = shipping, EscrowFee = fee, EscrowFeeRate = EscrowFeeRate,
+                TotalAmount = product.Price + shipping + fee, ProductVersion = Convert.ToBase64String(product.RowVersion) };
+        }
+        public async Task<OrderQuoteResponse> QuoteAsync(int buyerId, int productId) => Quote(await PurchasableAsync(buyerId, productId, false));
         public async Task<OrderResponse> CreateEscrowOrderAsync(int buyerId, CreateEscrowOrderRequest request)
         {
-            // 1. Kiểm tra tài khoản người mua và người bán
-            var buyer = await _context.Users.FindAsync(buyerId);
-            if (buyer == null)
-            {
-                throw new KeyNotFoundException("Không tìm thấy thông tin tài khoản người mua.");
+            if (request.ClientRequestId == Guid.Empty) throw new InvalidOperationException("Mã yêu cầu không hợp lệ.");
+            if (request.PaymentMethod is not ("PAYOS" or "COD")) throw new InvalidOperationException("Phương thức thanh toán không hợp lệ.");
+            await using var tx = await _context.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+            await _context.Users.FromSqlInterpolated($"SELECT * FROM [auth].[Users] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {buyerId}").LoadAsync();
+            var existing = await _context.Orders.Include(o => o.Buyer).Include(o => o.Seller).Include(o => o.Items).SingleOrDefaultAsync(o => o.BuyerId == buyerId && o.ClientRequestId == request.ClientRequestId);
+            if (existing != null) {
+                if (existing.PaymentMethod != request.PaymentMethod || existing.Items.All(i => i.ProductId != request.ProductId)) throw new InvalidOperationException("Mã yêu cầu đã được dùng cho đơn hàng khác.");
+                await tx.CommitAsync(); return MapToOrderResponse(existing, existing.Buyer.FullName, existing.Seller.FullName);
             }
-
-            var seller = await _context.Users.FindAsync(request.SellerId);
-            if (seller == null)
-            {
-                throw new KeyNotFoundException("Không tìm thấy thông tin tài khoản người bán.");
-            }
-
-            if (buyerId == request.SellerId)
-            {
-                throw new InvalidOperationException("Bạn không thể tự đặt mua sản phẩm của chính mình.");
-            }
-
-            // 2. Tính toán phí Escrow (2.5%) và tổng tiền đơn hàng
-            var escrowFee = Math.Round(request.ProductPrice * EscrowFeeRate, 0, MidpointRounding.AwayFromZero);
-            var totalAmount = request.ProductPrice + request.ShippingFee + escrowFee;
-
-            // 3. Tạo đơn hàng và snapshot thông tin sản phẩm
-            var order = new Order
-            {
-                BuyerId = buyerId,
-                SellerId = request.SellerId,
-                ProductPrice = request.ProductPrice,
-                ShippingFee = request.ShippingFee,
-                EscrowFee = escrowFee,
-                TotalAmount = totalAmount,
-                Status = OrderStatus.PendingPayment,
-                ReceiverName = request.ReceiverName.Trim(),
-                ReceiverPhone = request.ReceiverPhone.Trim(),
-                ShippingAddress = request.ShippingAddress.Trim(),
-                CreatedAt = DateTime.UtcNow,
-                Items = new List<OrderItem>
-                {
-                    new OrderItem
-                    {
-                        ProductId = request.ProductId,
-                        ProductNameSnapshot = request.ProductName.Trim(),
-                        PriceSnapshot = request.ProductPrice,
-                        ThumbnailSnapshot = request.ProductThumbnail
-                    }
-                }
-            };
-
-            _context.Orders.Add(order);
-            await _context.SaveChangesAsync();
-
-            // 4. Khóa sản phẩm (thời gian giữ chỗ 15 phút) qua IProductLockService
-            var lockSuccess = await _productLockService.LockProductAsync(request.ProductId, order.Id);
-            if (!lockSuccess)
-            {
-                order.Status = OrderStatus.Cancelled;
-                await _context.SaveChangesAsync();
-                throw new InvalidOperationException("Sản phẩm hiện đang được người khác giữ chỗ hoặc không khả dụng.");
-            }
-
-            _logger.LogInformation("Order #{OrderId} created successfully by Buyer #{BuyerId} for Product #{ProductId}. Status: {Status}",
-                order.Id, buyerId, request.ProductId, order.Status);
-
-            return MapToOrderResponse(order, buyer.FullName, seller.FullName);
+            var product = await PurchasableAsync(buyerId, request.ProductId, true);
+            if (Convert.ToBase64String(product.RowVersion) != request.ProductVersion) throw new InvalidOperationException("Sản phẩm đã thay đổi. Tải lại giá trước khi đặt hàng.");
+            var quote = Quote(product);
+            if (request.PaymentMethod == "COD") { quote.TotalAmount -= quote.EscrowFee; quote.EscrowFee = 0; }
+            var order = new Order { BuyerId = buyerId, SellerId = quote.SellerId, ProductPrice = quote.ProductPrice, ShippingFee = quote.ShippingFee,
+                PaymentMethod = request.PaymentMethod, Status = request.PaymentMethod == "COD" ? OrderStatus.CodPending : OrderStatus.PendingPayment,
+                EscrowFee = quote.EscrowFee, TotalAmount = quote.TotalAmount, ClientRequestId = request.ClientRequestId,
+                ReceiverName = request.ReceiverName.Trim(), ReceiverPhone = request.ReceiverPhone.Trim(), ShippingAddress = request.ShippingAddress.Trim(),
+                Items = new List<OrderItem> { new() { ProductId = product.Id, ProductNameSnapshot = quote.ProductName, PriceSnapshot = quote.ProductPrice, ThumbnailSnapshot = quote.Thumbnail } } };
+            _context.Orders.Add(order); await Doosii.DAL.Data.UploadedImageGuard.SaveChangesAsync(_context);
+            if (!await _productLockService.LockProductAsync(product.Id, order.Id)) throw new InvalidOperationException("Không thể giữ sản phẩm cho đơn hàng.");
+            await tx.CommitAsync();
+            return await GetOrderByIdAsync(order.Id, buyerId);
         }
 
         public async Task<OrderResponse> GetOrderByIdAsync(int orderId, int userId)
@@ -99,6 +93,7 @@ namespace Doosii.BLL.Services
                 .Include(o => o.Buyer)
                 .Include(o => o.Seller)
                 .Include(o => o.Items)
+                .Include(o => o.Dispute)
                 .FirstOrDefaultAsync(o => o.Id == orderId);
 
             if (order == null)
@@ -106,8 +101,10 @@ namespace Doosii.BLL.Services
                 throw new KeyNotFoundException($"Không tìm thấy đơn hàng với mã #{orderId}.");
             }
 
-            // Người xem phải là người mua hoặc người bán đơn hàng này
-            if (order.BuyerId != userId && order.SellerId != userId)
+            var viewer = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+            if (viewer == null || viewer.Role == "Banned") throw new UnauthorizedAccessException("Tài khoản không có quyền xem đơn.");
+            // Người xem phải là người mua, người bán hoặc admin hiện tại
+            if (order.BuyerId != userId && order.SellerId != userId && viewer.Role != "Admin")
             {
                 throw new UnauthorizedAccessException("Bạn không có quyền truy cập thông tin đơn hàng này.");
             }
@@ -143,195 +140,107 @@ namespace Doosii.BLL.Services
 
         public async Task<OrderResponse> ShipOrderAsync(int orderId, int sellerId, ShipOrderRequest request)
         {
-            var order = await _context.Orders
-                .Include(o => o.Buyer)
-                .Include(o => o.Seller)
-                .Include(o => o.Items)
-                .FirstOrDefaultAsync(o => o.Id == orderId);
+            await using var tx = await _context.Database.BeginTransactionAsync();
+            var order = await OrderLifecycle.LockAsync(_context, orderId);
+            if (order.SellerId != sellerId) throw new UnauthorizedAccessException("Chỉ người bán của đơn được cập nhật vận chuyển.");
+            if (order.Buyer.Role == "Banned" || order.Seller.Role == "Banned") throw new UnauthorizedAccessException("Tài khoản liên quan đang bị khóa.");
+            OrderLifecycle.EnsureVersion(order, request.Version);
+            if (order.Status is not (OrderStatus.EscrowHolding or OrderStatus.CodPending)) throw new InvalidOperationException("Đơn chưa sẵn sàng để gửi hàng.");
+            order.ShippingCarrier = request.ShippingCarrier.Trim(); order.TrackingCode = request.TrackingCode.Trim(); order.PackageImageUrl = request.PackageImageUrl?.Trim();
+            order.Status = order.PaymentMethod == "COD" ? OrderStatus.CodInTransit : OrderStatus.InTransit; order.ShippedAt = DateTime.UtcNow; order.UpdatedAt = DateTime.UtcNow;
+            await Doosii.DAL.Data.UploadedImageGuard.SaveChangesAsync(_context); await tx.CommitAsync();
+            return MapToOrderResponse(order, order.Buyer.FullName, order.Seller.FullName);
+        }
+        public async Task<OrderResponse> ConfirmOrderReceivedAsync(int orderId, int buyerId, ConfirmOrderRequest request)
+        {
+            await using var tx = await _context.Database.BeginTransactionAsync();
+            var order = await OrderLifecycle.LockAsync(_context, orderId);
+            if (order.BuyerId != buyerId) throw new UnauthorizedAccessException("Chỉ người mua của đơn được xác nhận nhận hàng.");
+            OrderLifecycle.EnsureVersion(order, request.Version);
+            if (order.Status != OrderStatus.InTransit || (order.Dispute != null && order.Dispute.Status != "RESOLVED")) throw new InvalidOperationException("Đơn chưa được gửi hoặc đang có khiếu nại.");
+            await CompleteAsync(order); await tx.CommitAsync();
+            return MapToOrderResponse(order, order.Buyer.FullName, order.Seller.FullName);
+        }
+        private async Task CompleteAsync(Order order)
+        {
+            var escrow = order.EscrowTransactions.SingleOrDefault(e => e.Status == EscrowStatus.Holding)
+                ?? throw new InvalidOperationException("Không tìm thấy khoản ký quỹ đã nhận của đơn hàng.");
+            order.Status = OrderStatus.CompletedReleased; order.CompletedAt = DateTime.UtcNow; order.DeliveredAt ??= DateTime.UtcNow; order.UpdatedAt = DateTime.UtcNow;
+            escrow.Status = EscrowStatus.Released; escrow.ReleasedAt = DateTime.UtcNow;
+            foreach (var item in order.Items) await _productLockService.MarkProductAsSoldAsync(item.ProductId, order.Id);
+            await Doosii.DAL.Data.UploadedImageGuard.SaveChangesAsync(_context);
+        }
 
-            if (order == null)
-            {
-                throw new KeyNotFoundException($"Không tìm thấy đơn hàng với mã #{orderId}.");
+        public async Task<OrderResponse> CancelAsync(int orderId, int buyerId, ConfirmOrderRequest request)
+        {
+            await using var tx = await _context.Database.BeginTransactionAsync();
+            var order = await OrderLifecycle.LockAsync(_context, orderId);
+            if (order.BuyerId != buyerId || order.Buyer.Role == "Banned") throw new UnauthorizedAccessException("Chỉ người mua được hủy đơn của mình.");
+            if (order.Status == OrderStatus.Cancelled) return MapToOrderResponse(order, order.Buyer.FullName, order.Seller.FullName);
+            OrderLifecycle.EnsureVersion(order, request.Version);
+            if (order.Status is not (OrderStatus.PendingPayment or OrderStatus.CodPending) || order.PaidAt.HasValue || order.EscrowTransactions.Any()) throw new InvalidOperationException("Chỉ hủy đơn chưa thanh toán và chưa gửi hàng.");
+            order.Status = OrderStatus.Cancelled; order.UpdatedAt = DateTime.UtcNow;
+            foreach (var item in order.Items) {
+                var product = await _context.Products.FromSqlInterpolated($"SELECT * FROM [store].[Products] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {item.ProductId}").SingleAsync();
+                if (product.Status == "LOCKED" && product.ReservedOrderId == order.Id) { product.Status = "AVAILABLE"; product.ReservedOrderId = null; product.UpdatedAt = DateTime.UtcNow; }
             }
-
-            if (order.SellerId != sellerId)
-            {
-                throw new UnauthorizedAccessException("Bạn không có quyền cập nhật thông tin vận chuyển cho đơn hàng của người bán khác.");
-            }
-
-            if (order.Status != OrderStatus.EscrowHolding)
-            {
-                throw new InvalidOperationException($"Chỉ có thể cập nhật vận chuyển khi đơn hàng đang ở trạng thái giữ tiền ký quỹ (ESCROW_HOLDING). Trạng thái hiện tại: {order.Status}.");
-            }
-
-            order.ShippingCarrier = request.ShippingCarrier.Trim();
-            order.TrackingCode = request.TrackingCode.Trim();
-            order.PackageImageUrl = request.PackageImageUrl?.Trim();
-            order.Status = OrderStatus.InTransit;
-            order.ShippedAt = DateTime.UtcNow;
-            order.UpdatedAt = DateTime.UtcNow;
-
-            await _context.SaveChangesAsync();
-
-            _logger.LogInformation("Order #{OrderId} marked as IN_TRANSIT by Seller #{SellerId}. Carrier: {Carrier}, Tracking: {Tracking}",
-                order.Id, sellerId, order.ShippingCarrier, order.TrackingCode);
-
+            await _context.SaveChangesAsync(); await tx.CommitAsync();
             return MapToOrderResponse(order, order.Buyer.FullName, order.Seller.FullName);
         }
 
-        public async Task<OrderResponse> ConfirmOrderReceivedAsync(int orderId, int buyerId)
+        public async Task<OrderResponse> CollectCodAsync(int orderId, int sellerId, ConfirmOrderRequest request)
         {
-            var order = await _context.Orders
-                .Include(o => o.Buyer)
-                .Include(o => o.Seller)
-                .Include(o => o.Items)
-                .Include(o => o.EscrowTransactions)
-                .FirstOrDefaultAsync(o => o.Id == orderId);
-
-            if (order == null)
-            {
-                throw new KeyNotFoundException($"Không tìm thấy đơn hàng với mã #{orderId}.");
+            await using var tx = await _context.Database.BeginTransactionAsync();
+            var order = await OrderLifecycle.LockAsync(_context, orderId);
+            if (order.SellerId != sellerId || order.Seller.Role == "Banned") throw new UnauthorizedAccessException("Chỉ shop của đơn được xác nhận thu tiền COD.");
+            if (order.Status == OrderStatus.CodCompleted) return MapToOrderResponse(order, order.Buyer.FullName, order.Seller.FullName);
+            OrderLifecycle.EnsureVersion(order, request.Version);
+            if (order.PaymentMethod != "COD" || order.Status != OrderStatus.CodInTransit) throw new InvalidOperationException("Đơn không phải COD đang giao.");
+            order.Status = OrderStatus.CodCompleted; order.PaidAt = order.DeliveredAt = order.CompletedAt = order.UpdatedAt = DateTime.UtcNow;
+            foreach (var item in order.Items) {
+                await _context.Products.FromSqlInterpolated($"SELECT * FROM [store].[Products] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {item.ProductId}").LoadAsync();
+                await _productLockService.MarkProductAsSoldAsync(item.ProductId, order.Id);
             }
-
-            if (order.BuyerId != buyerId)
-            {
-                throw new UnauthorizedAccessException("Bạn không có quyền xác nhận nhận hàng cho đơn hàng của người mua khác.");
-            }
-
-            if (order.Status != OrderStatus.InTransit)
-            {
-                throw new InvalidOperationException($"Chỉ có thể xác nhận đã nhận hàng khi đơn hàng đang trong trạng thái vận chuyển (IN_TRANSIT). Trạng thái hiện tại: {order.Status}.");
-            }
-
-            await using var transaction = await _context.Database.BeginTransactionAsync();
-            try
-            {
-                order.Status = OrderStatus.CompletedReleased;
-                order.CompletedAt = DateTime.UtcNow;
-                order.UpdatedAt = DateTime.UtcNow;
-
-                // Cập nhật trạng thái giải ngân ký quỹ
-                var escrow = order.EscrowTransactions.FirstOrDefault(e => e.Status == EscrowStatus.Holding);
-                if (escrow != null)
-                {
-                    escrow.Status = EscrowStatus.Released;
-                    escrow.ReleasedAt = DateTime.UtcNow;
-                }
-                else
-                {
-                    _context.EscrowTransactions.Add(new EscrowTransaction
-                    {
-                        OrderId = order.Id,
-                        Amount = order.TotalAmount,
-                        Status = EscrowStatus.Released,
-                        ReleasedAt = DateTime.UtcNow,
-                        CreatedAt = DateTime.UtcNow
-                    });
-                }
-
-                // Đánh dấu các sản phẩm là SOLD vĩnh viễn
-                foreach (var item in order.Items)
-                {
-                    await _productLockService.MarkProductAsSoldAsync(item.ProductId);
-                }
-
-                await _context.SaveChangesAsync();
-                await transaction.CommitAsync();
-
-                _logger.LogInformation("Order #{OrderId} confirmed received by Buyer #{BuyerId}. Escrow funds released to Seller #{SellerId}.",
-                    order.Id, buyerId, order.SellerId);
-
-                return MapToOrderResponse(order, order.Buyer.FullName, order.Seller.FullName);
-            }
-            catch (Exception ex)
-            {
-                await transaction.RollbackAsync();
-                _logger.LogError(ex, "Lỗi khi xác nhận nhận hàng cho đơn hàng #{OrderId}", orderId);
-                throw;
-            }
+            await _context.SaveChangesAsync(); await tx.CommitAsync();
+            return MapToOrderResponse(order, order.Buyer.FullName, order.Seller.FullName);
         }
 
         public async Task<int> CancelExpiredOrdersAsync()
         {
-            var expiredThreshold = DateTime.UtcNow.AddMinutes(-15);
-            var expiredOrders = await _context.Orders
-                .Include(o => o.Items)
-                .Where(o => o.Status == OrderStatus.PendingPayment && o.CreatedAt <= expiredThreshold)
-                .ToListAsync();
-
-            if (expiredOrders.Count == 0)
+            var threshold = DateTime.UtcNow.AddMinutes(-15);
+            var ids = await _context.Orders.AsNoTracking().Where(o => o.Status == OrderStatus.PendingPayment && o.CreatedAt <= threshold).Select(o => o.Id).ToListAsync();
+            var count = 0;
+            foreach (var id in ids)
             {
-                return 0;
+                await using var tx = await _context.Database.BeginTransactionAsync();
+                var order = await OrderLifecycle.LockAsync(_context, id);
+                await _context.Entry(order).ReloadAsync();
+                if (await OrderLifecycle.ExpireAsync(_context, order)) count++;
+                await tx.CommitAsync();
             }
-
-            _logger.LogInformation("Worker detected {Count} expired PENDING_PAYMENT orders past 15 mins. Cancelling and unlocking products...", expiredOrders.Count);
-
-            foreach (var order in expiredOrders)
-            {
-                order.Status = OrderStatus.Cancelled;
-                order.UpdatedAt = DateTime.UtcNow;
-
-                foreach (var item in order.Items)
-                {
-                    await _productLockService.UnlockProductAsync(item.ProductId);
-                }
-            }
-
-            await _context.SaveChangesAsync();
-            return expiredOrders.Count;
+            return count;
         }
-
         public async Task<int> AutoCompleteDeliveredOrdersAsync()
         {
-            var deliveredThreshold = DateTime.UtcNow.AddHours(-72);
-            var autoOrders = await _context.Orders
-                .Include(o => o.Items)
-                .Include(o => o.EscrowTransactions)
-                .Include(o => o.Dispute)
-                .Where(o => o.Status == OrderStatus.InTransit
-                         && o.ShippedAt.HasValue
-                         && o.ShippedAt.Value <= deliveredThreshold
-                         && (o.Dispute == null || o.Dispute.Status == "RESOLVED"))
-                .ToListAsync();
-
-            if (autoOrders.Count == 0)
+            // A shipping timestamp alone is not proof that delivery occurred.
+            var threshold = DateTime.UtcNow.AddHours(-72);
+            var ids = await _context.Orders.AsNoTracking().Where(o => o.Status == OrderStatus.InTransit && o.DeliveredAt.HasValue && o.DeliveredAt <= threshold).Select(o => o.Id).ToListAsync();
+            var count = 0;
+            foreach (var id in ids)
             {
-                return 0;
+                await using var tx = await _context.Database.BeginTransactionAsync();
+                var order = await OrderLifecycle.LockAsync(_context, id); await _context.Entry(order).ReloadAsync();
+                if (order.Status == OrderStatus.InTransit && order.DeliveredAt <= threshold && order.Dispute == null) { await CompleteAsync(order); count++; }
+                await tx.CommitAsync();
             }
-
-            _logger.LogInformation("Worker detected {Count} IN_TRANSIT orders past 72h inspection window without dispute. Auto-completing and releasing escrow...", autoOrders.Count);
-
-            foreach (var order in autoOrders)
-            {
-                order.Status = OrderStatus.CompletedReleased;
-                order.CompletedAt = DateTime.UtcNow;
-                order.UpdatedAt = DateTime.UtcNow;
-
-                var escrow = order.EscrowTransactions.FirstOrDefault(e => e.Status == EscrowStatus.Holding);
-                if (escrow != null)
-                {
-                    escrow.Status = EscrowStatus.Released;
-                    escrow.ReleasedAt = DateTime.UtcNow;
-                }
-
-                foreach (var item in order.Items)
-                {
-                    await _productLockService.MarkProductAsSoldAsync(item.ProductId);
-                }
-            }
-
-            await _context.SaveChangesAsync();
-            return autoOrders.Count;
+            return count;
         }
 
         public async Task<DisputeResponse> CreateDisputeAsync(int orderId, int buyerId, CreateDisputeRequest request)
         {
-            var order = await _context.Orders
-                .Include(o => o.Buyer)
-                .Include(o => o.Seller)
-                .Include(o => o.Dispute)
-                .FirstOrDefaultAsync(o => o.Id == orderId);
-
+            await using var transaction = await _context.Database.BeginTransactionAsync();
+            var order = await OrderLifecycle.LockAsync(_context, orderId);
+            if (order.Buyer.Role == "Banned") throw new UnauthorizedAccessException("Tài khoản đang bị khóa.");
             if (order == null)
             {
                 throw new KeyNotFoundException($"Không tìm thấy đơn hàng #{orderId}.");
@@ -347,34 +256,17 @@ namespace Doosii.BLL.Services
                 throw new InvalidOperationException("Đơn hàng này đã có khiếu nại đang được xử lý.");
             }
 
-            // Kiểm tra điều kiện mở khiếu nại:
-            // Đơn hàng phải ở trạng thái IN_TRANSIT hoặc COMPLETED_RELEASED trong vòng 24h
-            bool canDispute = false;
-            if (order.Status == OrderStatus.InTransit)
-            {
-                canDispute = true;
-            }
-            else if (order.Status == OrderStatus.CompletedReleased)
-            {
-                var completedTime = order.CompletedAt ?? order.UpdatedAt ?? DateTime.UtcNow;
-                if (DateTime.UtcNow - completedTime <= TimeSpan.FromHours(24))
-                {
-                    canDispute = true;
-                }
-            }
-
-            if (!canDispute)
-            {
-                throw new InvalidOperationException($"Chỉ có thể khiếu nại khi đơn hàng đang giao hoặc trong vòng 24h kể từ khi nhận hàng. Trạng thái hiện tại: {order.Status}.");
-            }
-
-            // Kiểm tra bằng chứng: Phải có video hoặc tối thiểu 2 ảnh
-            bool hasVideo = !string.IsNullOrWhiteSpace(request.EvidenceVideoUrl);
-            int imageCount = request.EvidenceImages?.Count ?? 0;
-            if (!hasVideo && imageCount < 2)
-            {
-                throw new InvalidOperationException("Khiếu nại bắt buộc phải có video mở hộp (unboxing) hoặc tối thiểu 2 ảnh bằng chứng lỗi sản phẩm.");
-            }
+            if (!DisputeRules.Eligible(order, DateTime.UtcNow))
+                throw new InvalidOperationException("Chỉ được khiếu nại trong quá trình giao hàng hoặc tối đa 24 giờ sau khi nhận hàng.");
+            if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length > 1000)
+                throw new InvalidOperationException("Lý do cần từ 1 đến 1000 ký tự.");
+            var video = DisputeRules.EvidenceUrl(request.EvidenceVideoUrl);
+            if (request.EvidenceImages?.Count > 5) throw new InvalidOperationException("Tối đa 5 ảnh bằng chứng.");
+            var images = (request.EvidenceImages ?? new()).Select(DisputeRules.EvidenceUrl).Where(u => u != null).Select(u => u!).Distinct().ToList();
+            if (video == null && images.Count < 2)
+                throw new InvalidOperationException("Cần video mở hàng hoặc ít nhất 2 ảnh bằng chứng khác nhau.");
+            if (order.EscrowTransactions.Count(e => e.Status == EscrowStatus.Holding || e.Status == EscrowStatus.Released) != 1)
+                throw new InvalidOperationException("Không xác định được khoản ký quỹ của đơn hàng.");
 
             // Đổi trạng thái đơn hàng sang DISPUTED (đóng băng ký quỹ)
             order.Status = OrderStatus.Disputed;
@@ -385,16 +277,17 @@ namespace Doosii.BLL.Services
                 OrderId = order.Id,
                 RaisedByUserId = buyerId,
                 Reason = request.Reason.Trim(),
-                EvidenceVideoUrl = request.EvidenceVideoUrl?.Trim(),
-                EvidenceImagesJson = request.EvidenceImages != null && request.EvidenceImages.Count > 0
-                    ? System.Text.Json.JsonSerializer.Serialize(request.EvidenceImages)
+                EvidenceVideoUrl = video,
+                EvidenceImagesJson = images.Count > 0
+                    ? System.Text.Json.JsonSerializer.Serialize(images)
                     : null,
                 Status = DisputeStatus.PendingReview,
                 CreatedAt = DateTime.UtcNow
             };
 
             _context.Disputes.Add(dispute);
-            await _context.SaveChangesAsync();
+            await Doosii.DAL.Data.UploadedImageGuard.SaveChangesAsync(_context);
+            await transaction.CommitAsync();
 
             _logger.LogInformation("Dispute #{DisputeId} opened by Buyer #{BuyerId} for Order #{OrderId}. Status: {Status}",
                 dispute.Id, buyerId, order.Id, dispute.Status);
@@ -404,6 +297,8 @@ namespace Doosii.BLL.Services
 
         public async Task<DisputeResponse?> GetOrderDisputeAsync(int orderId, int userId)
         {
+            var actor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+            if (actor == null || actor.Role == "Banned") throw new UnauthorizedAccessException("Tài khoản không có quyền xem khiếu nại.");
             var order = await _context.Orders
                 .Include(o => o.Buyer)
                 .Include(o => o.Dispute)
@@ -473,6 +368,7 @@ namespace Doosii.BLL.Services
                 EscrowFee = order.EscrowFee,
                 TotalAmount = order.TotalAmount,
                 Status = order.Status,
+                PaymentMethod = order.PaymentMethod,
                 ReceiverName = order.ReceiverName,
                 ReceiverPhone = order.ReceiverPhone,
                 ShippingAddress = order.ShippingAddress,
@@ -482,7 +378,10 @@ namespace Doosii.BLL.Services
                 PaidAt = order.PaidAt,
                 ShippedAt = order.ShippedAt,
                 CompletedAt = order.CompletedAt,
-                CreatedAt = order.CreatedAt,
+                CreatedAt = DateTime.SpecifyKind(order.CreatedAt, DateTimeKind.Utc),
+                PaymentExpiresAt = OrderLifecycle.ExpiresAt(order), Version = Convert.ToBase64String(order.RowVersion),
+                DeliveredAt = order.DeliveredAt, DisputeDeadline = DisputeRules.Deadline(order),
+                CanOpenDispute = DisputeRules.Eligible(order, DateTime.UtcNow),
                 PaymentTransferSyntax = $"DOSI {order.Id}",
                 Items = order.Items.Select(item => new OrderItemDto
                 {

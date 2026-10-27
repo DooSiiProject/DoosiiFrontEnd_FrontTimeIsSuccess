@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Doosii.BLL.DTOs;
 using Doosii.BLL.Exceptions;
@@ -24,9 +25,7 @@ namespace Doosii.BLL.Services
         private static readonly HashSet<string> ValidActions = new(StringComparer.OrdinalIgnoreCase)
         {
             "DISMISS",
-            "HIDE_POST",
-            "DELETE_POST",
-            "BAN_AUTHOR"
+            "HIDE_POST"
         };
 
         public PostReportService(AppDbContext context)
@@ -36,6 +35,9 @@ namespace Doosii.BLL.Services
 
         public async Task<PostReportResponseDto> CreateReportAsync(int postId, int reporterId, CreatePostReportRequest request)
         {
+            var actor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == reporterId)
+                ?? throw new ServiceException(401, "Vui long dang nhap.", "UNAUTHORIZED");
+            if (actor.Role == "Banned") throw new ServiceException(403, "Tai khoan da bi khoa.", "USER_BANNED");
             if (string.IsNullOrWhiteSpace(request.PostType))
             {
                 throw new ServiceException(400, "PostType is required", "POST_NOT_FOUND");
@@ -97,7 +99,7 @@ namespace Doosii.BLL.Services
                     .Include(p => p.Author)
                     .FirstOrDefaultAsync(p => p.Id == postId);
 
-                if (passPost == null || passPost.Status == "HIDDEN")
+                if (passPost == null || passPost.Author.Role == "Banned" || !(new[] { "ACTIVE", "LOCKED", "SOLD" }).Contains(passPost.Status))
                 {
                     throw new ServiceException(404, "Pass post not found or is hidden", "POST_NOT_FOUND");
                 }
@@ -118,7 +120,7 @@ namespace Doosii.BLL.Services
                     .Include(p => p.Author)
                     .FirstOrDefaultAsync(p => p.Id == postId);
 
-                if (spotPost == null || spotPost.Status == "HIDDEN")
+                if (spotPost == null || spotPost.Author.Role == "Banned" || spotPost.Status != "ACTIVE")
                 {
                     throw new ServiceException(404, "Spot sharing post not found or is hidden", "POST_NOT_FOUND");
                 }
@@ -163,7 +165,7 @@ namespace Doosii.BLL.Services
             };
 
             _context.PostReports.Add(report);
-            await _context.SaveChangesAsync();
+            await Doosii.DAL.Data.UploadedImageGuard.SaveChangesAsync(_context);
 
             var reporter = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == reporterId);
 
@@ -200,6 +202,12 @@ namespace Doosii.BLL.Services
 
         public async Task<PagedResult<PostReportResponseDto>> GetReportsQueueAsync(PostReportQuery query)
         {
+            if (query.Page is < 1 or > 1000000 || query.PageSize is < 1 or > 50)
+                throw new ServiceException(400, "Phan trang khong hop le.", "INVALID_PAGINATION");
+            if (!string.IsNullOrWhiteSpace(query.Status) && !new[] { "PENDING", "REVIEWED", "DISMISSED", "ACTION_TAKEN" }.Contains(query.Status.Trim().ToUpperInvariant()))
+                throw new ServiceException(400, "Trang thai khong hop le.", "INVALID_REPORT_STATUS");
+            if (!string.IsNullOrWhiteSpace(query.Reason) && !ValidReasons.Contains(query.Reason.Trim()))
+                throw new ServiceException(400, "Ly do khong hop le.", "INVALID_REPORT_REASON");
             var queryable = _context.PostReports.AsNoTracking();
 
             // Status filter: mac dinh PENDING
@@ -225,6 +233,7 @@ namespace Doosii.BLL.Services
                 .Include(r => r.Reporter)
                 .Include(r => r.ReviewedByAdmin)
                 .OrderByDescending(r => r.CreatedAt)
+                .ThenByDescending(r => r.Id)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .ToListAsync();
@@ -341,6 +350,10 @@ namespace Doosii.BLL.Services
 
         public async Task<PostReportResponseDto> ResolveReportAsync(int reportId, int adminId, ResolvePostReportRequest request)
         {
+            var reviewer = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == adminId);
+            if (reviewer?.Role != "Admin") throw new ServiceException(403, "Khong co quyen quan tri.", "FORBIDDEN");
+            if (request.AdminNote?.Length > 2000) throw new ServiceException(400, "Ghi chu toi da 2000 ky tu.", "INVALID_ADMIN_NOTE");
+            await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
             var report = await _context.PostReports
                 .Include(r => r.Reporter)
                 .FirstOrDefaultAsync(r => r.Id == reportId);
@@ -352,7 +365,7 @@ namespace Doosii.BLL.Services
 
             if (report.Status != "PENDING")
             {
-                throw new ServiceException(400, "Report has already been resolved", "REPORT_ALREADY_RESOLVED");
+                throw new ServiceException(409, "Report has already been resolved", "REPORT_ALREADY_RESOLVED");
             }
 
             if (string.IsNullOrWhiteSpace(request.Action))
@@ -363,11 +376,11 @@ namespace Doosii.BLL.Services
             var action = request.Action.Trim().ToUpperInvariant();
             if (!ValidActions.Contains(action))
             {
-                throw new ServiceException(400, "Invalid moderation action. Allowed: DISMISS, HIDE_POST, DELETE_POST, BAN_AUTHOR", "INVALID_MODERATION_ACTION");
+                throw new ServiceException(400, "Chi chap nhan DISMISS hoac HIDE_POST", "INVALID_MODERATION_ACTION");
             }
 
             // Su dung transaction theo yeu cau
-            await using var transaction = await _context.Database.BeginTransactionAsync();
+
             try
             {
                 if (action == "DISMISS")
@@ -407,7 +420,7 @@ namespace Doosii.BLL.Services
 
                 // TODO: Ghi AdminAuditLogs khi entity/table duoc cung cap tu module cua Wee.
 
-                await _context.SaveChangesAsync();
+                await Doosii.DAL.Data.UploadedImageGuard.SaveChangesAsync(_context);
                 await transaction.CommitAsync();
             }
             catch

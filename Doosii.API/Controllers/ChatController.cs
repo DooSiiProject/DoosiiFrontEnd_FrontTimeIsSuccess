@@ -48,15 +48,16 @@ namespace Doosii.API.Controllers
             try
             {
                 var result = await _chatService.GetOrCreateConversationAsync(buyerId.Value, request.SellerId, request.ProductId);
+                await InboxChanged(result.Id, buyerId.Value);
                 return Ok(ApiResponse.Ok(result, "Conversation ready"));
             }
             catch (ServiceException ex)
             {
                 return StatusCode(ex.StatusCode, ApiResponse.Fail(ex.Message, new List<string> { ex.ErrorCode }));
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string> { ex.Message }));
+                return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string>()));
             }
         }
 
@@ -83,9 +84,9 @@ namespace Doosii.API.Controllers
             {
                 return StatusCode(ex.StatusCode, ApiResponse.Fail(ex.Message, new List<string> { ex.ErrorCode }));
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string> { ex.Message }));
+                return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string>()));
             }
         }
 
@@ -116,9 +117,9 @@ namespace Doosii.API.Controllers
             {
                 return StatusCode(ex.StatusCode, ApiResponse.Fail(ex.Message, new List<string> { ex.ErrorCode }));
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string> { ex.Message }));
+                return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string>()));
             }
         }
 
@@ -132,7 +133,7 @@ namespace Doosii.API.Controllers
         /// PUT /api/chat/conversations/{conversationId}/read
         /// </summary>
         [HttpPut("conversations/{conversationId:int}/read")]
-        public async Task<IActionResult> MarkAsRead(int conversationId)
+        public async Task<IActionResult> MarkAsRead(int conversationId, [FromQuery] int? upToId = null)
         {
             var userId = GetCurrentUserId();
             if (userId == null)
@@ -142,22 +143,21 @@ namespace Doosii.API.Controllers
 
             try
             {
-                var status = await _chatService.MarkMessagesAsReadAsync(conversationId, userId.Value);
+                var status = await _chatService.MarkMessagesAsReadAsync(conversationId, userId.Value, upToId);
 
                 // Phat su kien SignalR cho ca hai thanh vien
-                await _hubContext.Clients
-                    .Group($"conversation_{conversationId}")
-                    .SendAsync("MessagesRead", status);
+                try { await _hubContext.Clients.Group($"conversation_{conversationId}").SendAsync("MessagesRead", status); } catch (Exception) { /* REST committed; polling can recover without treating push failure as a send failure. */ }
 
+                await InboxChanged(conversationId, userId.Value);
                 return Ok(ApiResponse.Ok(status, "Messages marked as read"));
             }
             catch (ServiceException ex)
             {
                 return StatusCode(ex.StatusCode, ApiResponse.Fail(ex.Message, new List<string> { ex.ErrorCode }));
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string> { ex.Message }));
+                return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string>()));
             }
         }
 
@@ -185,22 +185,21 @@ namespace Doosii.API.Controllers
 
             try
             {
-                var messageDto = await _chatService.SendTextMessageAsync(conversationId, userId.Value, request.Content);
+                var messageDto = await _chatService.SendTextMessageAsync(conversationId, userId.Value, request.Content, request.ClientRequestId);
 
                 // Broadcast qua SignalR
-                await _hubContext.Clients
-                    .Group($"conversation_{conversationId}")
-                    .SendAsync("ReceiveMessage", messageDto);
+                try { await _hubContext.Clients.Group($"conversation_{conversationId}").SendAsync("ReceiveMessage", messageDto); } catch (Exception) { /* REST committed; polling can recover without treating push failure as a send failure. */ }
 
+                await InboxChanged(conversationId, userId.Value);
                 return Ok(ApiResponse.Ok(messageDto, "Message sent successfully"));
             }
             catch (ServiceException ex)
             {
                 return StatusCode(ex.StatusCode, ApiResponse.Fail(ex.Message, new List<string> { ex.ErrorCode }));
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string> { ex.Message }));
+                return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string>()));
             }
         }
 
@@ -224,21 +223,20 @@ namespace Doosii.API.Controllers
 
             try
             {
-                var messageDto = await _chatService.SendProductCardAsync(conversationId, userId.Value, request.ProductId);
+                var messageDto = await _chatService.SendProductCardAsync(conversationId, userId.Value, request.ProductId, request.ClientRequestId);
 
-                await _hubContext.Clients
-                    .Group($"conversation_{conversationId}")
-                    .SendAsync("ReceiveProductCard", messageDto);
+                try { await _hubContext.Clients.Group($"conversation_{conversationId}").SendAsync("ReceiveProductCard", messageDto); } catch (Exception) { /* REST committed; polling can recover without treating push failure as a send failure. */ }
 
+                await InboxChanged(conversationId, userId.Value);
                 return Ok(ApiResponse.Ok(messageDto, "Product card sent successfully"));
             }
             catch (ServiceException ex)
             {
                 return StatusCode(ex.StatusCode, ApiResponse.Fail(ex.Message, new List<string> { ex.ErrorCode }));
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string> { ex.Message }));
+                return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string>()));
             }
         }
 
@@ -246,6 +244,21 @@ namespace Doosii.API.Controllers
         // PRIVATE HELPERS
         // =========================================================================
 
+        [HttpGet("conversations/{conversationId:int}")]
+        public async Task<IActionResult> GetConversation(int conversationId)
+        {
+            var id = GetCurrentUserId(); if (id == null) return Unauthorized(ApiResponse.Fail("Token không hợp lệ."));
+            try { return Ok(ApiResponse.Ok(await _chatService.GetConversationAsync(conversationId, id.Value))); }
+            catch (ServiceException ex) { return StatusCode(ex.StatusCode, ApiResponse.Fail(ex.Message, new List<string> { ex.ErrorCode })); }
+        }
+        private async Task InboxChanged(int conversationId, int actorId)
+        {
+            try {
+                var conversation = await _chatService.GetConversationAsync(conversationId, actorId);
+                await _hubContext.Clients.Groups(new[] { $"user_{conversation.BuyerId}", $"user_{conversation.SellerId}" })
+                    .SendAsync("ConversationChanged", new { ConversationId = conversationId });
+            } catch (Exception) { /* REST committed; clients resync on reconnect/focus. */ }
+        }
         private int? GetCurrentUserId()
         {
             var claim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -257,3 +270,4 @@ namespace Doosii.API.Controllers
             ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
     }
 }
+

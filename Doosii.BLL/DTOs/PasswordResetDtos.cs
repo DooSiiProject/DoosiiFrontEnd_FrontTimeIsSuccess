@@ -1,10 +1,11 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
 namespace Doosii.BLL.DTOs
 {
     public class ForgotPasswordRequest
     {
         [Required(ErrorMessage = "Email không được để trống.")]
+        [MaxLength(256)]
         [EmailAddress(ErrorMessage = "Email không đúng định dạng.")]
         public string Email { get; set; } = string.Empty;
     }
@@ -12,24 +13,27 @@ namespace Doosii.BLL.DTOs
     public class VerifyOtpRequest
     {
         [Required(ErrorMessage = "Email không được để trống.")]
+        [MaxLength(256)]
         [EmailAddress(ErrorMessage = "Email không đúng định dạng.")]
         public string Email { get; set; } = string.Empty;
 
         [Required(ErrorMessage = "Mã OTP không được để trống.")]
-        [StringLength(6, MinimumLength = 6, ErrorMessage = "Mã OTP phải gồm đúng 6 chữ số.")]
+        [RegularExpression(@"^[0-9]{6}$", ErrorMessage = "Mã OTP phải gồm đúng 6 chữ số.")]
         public string OtpCode { get; set; } = string.Empty;
 
+        [RegularExpression("^ForgotPassword$", ErrorMessage = "Mục đích OTP không hợp lệ.")]
         public string Purpose { get; set; } = "ForgotPassword";
     }
 
     public class ResetPasswordRequest
     {
         [Required(ErrorMessage = "Email không được để trống.")]
+        [MaxLength(256)]
         [EmailAddress(ErrorMessage = "Email không đúng định dạng.")]
         public string Email { get; set; } = string.Empty;
 
         [Required(ErrorMessage = "Mã OTP không được để trống.")]
-        [StringLength(6, MinimumLength = 6, ErrorMessage = "Mã OTP phải gồm đúng 6 chữ số.")]
+        [RegularExpression(@"^[0-9]{6}$", ErrorMessage = "Mã OTP phải gồm đúng 6 chữ số.")]
         public string OtpCode { get; set; } = string.Empty;
 
         [Required(ErrorMessage = "Mật khẩu mới không được để trống.")]

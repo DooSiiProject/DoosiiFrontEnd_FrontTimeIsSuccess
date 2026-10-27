@@ -6,6 +6,8 @@ namespace Doosii.BLL.DTOs
         /// Số dư khả dụng hiện tại có thể rút về tài khoản ngân hàng
         /// </summary>
         public decimal AvailableBalance { get; set; }
+        public decimal PendingReleaseBalance { get; set; }
+        public decimal DeficitAmount { get; set; }
 
         /// <summary>
         /// Số dư đang được tạm giữ trong quỹ Escrow (các đơn hàng đang giao hoặc đang chờ gửi)

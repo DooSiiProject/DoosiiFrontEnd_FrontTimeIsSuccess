@@ -46,9 +46,9 @@ namespace Doosii.API.Controllers
                 var result = await _notificationService.GetUserNotificationsAsync(userId.Value, unreadOnly);
                 return Ok(ApiResponse<List<NotificationDto>>.SuccessResponse(result, "Lấy danh sách thông báo thành công."));
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return StatusCode(500, ApiResponse<List<NotificationDto>>.ErrorResponse("Đã xảy ra lỗi máy chủ nội bộ.", new List<string> { ex.Message }));
+                return StatusCode(500, ApiResponse<List<NotificationDto>>.ErrorResponse("Đã xảy ra lỗi máy chủ nội bộ.", new List<string> { "INTERNAL_ERROR" }));
             }
         }
 
@@ -69,9 +69,9 @@ namespace Doosii.API.Controllers
                 var count = await _notificationService.GetUnreadCountAsync(userId.Value);
                 return Ok(ApiResponse<int>.SuccessResponse(count, "Lấy số lượng thông báo chưa đọc thành công."));
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return StatusCode(500, ApiResponse<int>.ErrorResponse("Đã xảy ra lỗi máy chủ nội bộ.", new List<string> { ex.Message }));
+                return StatusCode(500, ApiResponse<int>.ErrorResponse("Đã xảy ra lỗi máy chủ nội bộ.", new List<string> { "INTERNAL_ERROR" }));
             }
         }
 
@@ -92,9 +92,10 @@ namespace Doosii.API.Controllers
                 await _notificationService.MarkAsReadAsync(id, userId.Value);
                 return Ok(ApiResponse<bool>.SuccessResponse(true, "Đã đánh dấu thông báo là đã đọc."));
             }
-            catch (Exception ex)
+            catch (KeyNotFoundException ex) { return NotFound(ApiResponse<bool>.ErrorResponse(ex.Message)); }
+            catch (Exception)
             {
-                return StatusCode(500, ApiResponse<bool>.ErrorResponse("Đã xảy ra lỗi máy chủ nội bộ.", new List<string> { ex.Message }));
+                return StatusCode(500, ApiResponse<bool>.ErrorResponse("Đã xảy ra lỗi máy chủ nội bộ.", new List<string> { "INTERNAL_ERROR" }));
             }
         }
 
@@ -115,10 +116,11 @@ namespace Doosii.API.Controllers
                 await _notificationService.MarkAllAsReadAsync(userId.Value);
                 return Ok(ApiResponse<bool>.SuccessResponse(true, "Đã đánh dấu tất cả thông báo là đã đọc."));
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return StatusCode(500, ApiResponse<bool>.ErrorResponse("Đã xảy ra lỗi máy chủ nội bộ.", new List<string> { ex.Message }));
+                return StatusCode(500, ApiResponse<bool>.ErrorResponse("Đã xảy ra lỗi máy chủ nội bộ.", new List<string> { "INTERNAL_ERROR" }));
             }
         }
     }
 }
+

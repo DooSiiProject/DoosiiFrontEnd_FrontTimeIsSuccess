@@ -54,6 +54,9 @@ namespace Doosii.BLL.Services
             if (author == null)
                 throw new ServiceException(401, "Tai khoan khong hop le.", "UNAUTHORIZED");
 
+            if (author.Role == "Banned") throw new ServiceException(403, "Tai khoan da bi khoa.", "USER_BANNED");
+            CommunityPostingRules.ValidateImages(request.Images);
+
             // ---- 1. Location Validation ----
             bool hasStore = request.TaggedStoreId.HasValue;
             bool hasCoords = request.Latitude.HasValue && request.Longitude.HasValue;
@@ -90,7 +93,7 @@ namespace Doosii.BLL.Services
             {
                 taggedStore = await _db.Stores
                     .AsNoTracking()
-                    .FirstOrDefaultAsync(s => s.Id == request.TaggedStoreId!.Value);
+                    .FirstOrDefaultAsync(s => s.Id == request.TaggedStoreId!.Value && s.IsActive && s.Owner.Role == "Shopper" && s.Owner.MerchantProfile != null && s.Owner.MerchantProfile.KycStatus == "APPROVED");
 
                 if (taggedStore == null)
                     throw new ServiceException(404,
@@ -176,9 +179,13 @@ namespace Doosii.BLL.Services
             }
 
             // ---- 7. Database Transaction ----
-            await using var transaction = await _db.Database.BeginTransactionAsync();
             try
             {
+                await using var transaction = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+                var liveAuthor = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == authorId);
+                if (liveAuthor == null || liveAuthor.Role == "Banned") throw new ServiceException(403, "Tai khoan khong the dang bai.", "USER_BANNED");
+                if (request.TaggedStoreId.HasValue && !await _db.Stores.AnyAsync(s => s.Id == request.TaggedStoreId && s.IsActive && s.Owner.Role == "Shopper" && s.Owner.MerchantProfile != null && s.Owner.MerchantProfile.KycStatus == "APPROVED"))
+                    throw new ServiceException(404, "Shop khong con cong khai.", "STORE_NOT_FOUND");
                 var spotPost = new SpotSharingPost
                 {
                     AuthorId = authorId,
@@ -246,7 +253,6 @@ namespace Doosii.BLL.Services
             }
             catch (Exception ex)
             {
-                await transaction.RollbackAsync();
                 _logger.LogError(ex,
                     "Database error creating SpotPost for user {AuthorId}, rolling back {Count} Cloudinary image(s)",
                     authorId, uploadedImages.Count);
@@ -254,13 +260,14 @@ namespace Doosii.BLL.Services
                 // Xoa anh tren Cloudinary vi database insert that bai
                 await RollbackUploadedImagesAsync(uploadedImages);
 
+                if (ex is ServiceException) throw;
                 throw new ServiceException(500, "Tao bai dang that bai do loi he thong.", "INTERNAL_ERROR");
             }
         }
 
         /// <summary>
         /// Lay chi tiet bai Spot Post theo ID.
-        /// Chi tra ve bai co Status != HIDDEN.
+        /// Chi tra ve bai cong khai cua tai khoan dang hoat dong.
         /// </summary>
         public async Task<SpotPostDetailDto?> GetSpotPostByIdAsync(int postId)
         {
@@ -268,7 +275,7 @@ namespace Doosii.BLL.Services
                 .Include(p => p.Author)
                 .Include(p => p.TaggedStore)
                 .Include(p => p.Images.OrderBy(i => i.DisplayOrder))
-                .FirstOrDefaultAsync(p => p.Id == postId && p.Status != "HIDDEN");
+                .FirstOrDefaultAsync(p => p.Id == postId && p.Status == "ACTIVE" && p.Author.Role != "Banned");
 
             if (post == null) return null;
 
@@ -281,7 +288,8 @@ namespace Doosii.BLL.Services
         public async Task<SpotPostPagedResult> GetSpotPostsByStoreAsync(int storeId, int page, int pageSize)
         {
             // Kiem tra store ton tai
-            var storeExists = await _db.Stores.AnyAsync(s => s.Id == storeId);
+            if (page < 1 || page > 1000000 || pageSize < 1 || pageSize > MaxPageSize) throw new ServiceException(400, "Invalid pagination.", "INVALID_QUERY");
+            var storeExists = await _db.Stores.AnyAsync(s => s.Id == storeId && s.IsActive && s.Owner.Role == "Shopper" && s.Owner.MerchantProfile != null && s.Owner.MerchantProfile.KycStatus == "APPROVED");
             if (!storeExists)
                 throw new ServiceException(404,
                     $"Khong tim thay Store voi Id = {storeId}.",
@@ -295,8 +303,9 @@ namespace Doosii.BLL.Services
                 .Include(p => p.Author)
                 .Include(p => p.TaggedStore)
                 .Include(p => p.Images.OrderBy(i => i.DisplayOrder))
-                .Where(p => p.TaggedStoreId == storeId && p.Status == "ACTIVE")
-                .OrderByDescending(p => p.CreatedAt);
+                .AsNoTracking()
+                .Where(p => p.TaggedStoreId == storeId && p.Status == "ACTIVE" && p.Author.Role != "Banned")
+                .OrderByDescending(p => p.CreatedAt).ThenByDescending(p => p.Id);
 
             var totalCount = await query.CountAsync();
 
@@ -329,7 +338,7 @@ namespace Doosii.BLL.Services
                     },
                     Latitude = p.Latitude,
                     Longitude = p.Longitude,
-                    ThumbnailUrl = p.Images.OrderBy(i => i.DisplayOrder).FirstOrDefault()?.ImageUrl,
+                    ThumbnailUrl = p.Images.OrderBy(i => i.DisplayOrder).ThenBy(i => i.Id).FirstOrDefault()?.ImageUrl,
                     TotalImages = p.Images.Count
                 }).ToList(),
                 TotalCount = totalCount,

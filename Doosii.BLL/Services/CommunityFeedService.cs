@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Doosii.BLL.DTOs;
@@ -26,9 +27,9 @@ namespace Doosii.BLL.Services
         public async Task<CommunityFeedResponseDto> GetFeedAsync(CommunityFeedQuery query)
         {
             // 1. Validate pagination
-            if (query.Page < 1 || query.PageSize < 1)
+            if (query.Page < 1 || query.Page > 1000000 || query.PageSize < 1)
             {
-                throw new ServiceException(400, "Page va pageSize phai lon hon hoac bang 1.", "INVALID_PAGINATION");
+                throw new ServiceException(400, "Page phai tu 1 den 1000000; pageSize phai lon hon hoac bang 1.", "INVALID_PAGINATION");
             }
 
             var page = query.Page;
@@ -65,12 +66,12 @@ namespace Doosii.BLL.Services
             // Dem tong so bai ACTIVE cua ca 2 bang
             var passCount = await _db.PassPosts
                 .AsNoTracking()
-                .Where(p => p.Status == "ACTIVE")
+                .Where(p => p.Status == "ACTIVE" && p.Author.Role != "Banned")
                 .CountAsync();
 
             var spotCount = await _db.SpotSharingPosts
                 .AsNoTracking()
-                .Where(s => s.Status == "ACTIVE")
+                .Where(s => s.Status == "ACTIVE" && s.Author.Role != "Banned")
                 .CountAsync();
 
             var totalItems = passCount + spotCount;
@@ -94,16 +95,18 @@ namespace Doosii.BLL.Services
 
             var passMeta = await _db.PassPosts
                 .AsNoTracking()
-                .Where(p => p.Status == "ACTIVE")
+                .Where(p => p.Status == "ACTIVE" && p.Author.Role != "Banned")
                 .OrderByDescending(p => p.CreatedAt)
+                .ThenByDescending(p => p.Id)
                 .Take(maxCandidates)
                 .Select(p => new FeedItemMeta { Id = p.Id, Type = "PASS", CreatedAt = p.CreatedAt })
                 .ToListAsync();
 
             var spotMeta = await _db.SpotSharingPosts
                 .AsNoTracking()
-                .Where(s => s.Status == "ACTIVE")
+                .Where(s => s.Status == "ACTIVE" && s.Author.Role != "Banned")
                 .OrderByDescending(s => s.CreatedAt)
+                .ThenByDescending(s => s.Id)
                 .Take(maxCandidates)
                 .Select(s => new FeedItemMeta { Id = s.Id, Type = "SPOT", CreatedAt = s.CreatedAt })
                 .ToListAsync();
@@ -111,6 +114,8 @@ namespace Doosii.BLL.Services
             // Gop va phan trang trong bo nho cho pham vi trang yeu cau
             var pageMeta = passMeta.Concat(spotMeta)
                 .OrderByDescending(m => m.CreatedAt)
+                .ThenBy(m => m.Type)
+                .ThenByDescending(m => m.Id)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .ToList();
@@ -174,7 +179,7 @@ namespace Doosii.BLL.Services
                 throw new ServiceException(400, "Latitude and longitude are required for near-you feed", "LOCATION_REQUIRED");
             }
 
-            if (query.Lat.Value < -90 || query.Lat.Value > 90 || query.Lng.Value < -180 || query.Lng.Value > 180)
+            if (!double.IsFinite(query.Lat.Value) || !double.IsFinite(query.Lng.Value) || query.Lat.Value < -90 || query.Lat.Value > 90 || query.Lng.Value < -180 || query.Lng.Value > 180)
             {
                 throw new ServiceException(400, "Latitude must be between -90 and 90, and longitude between -180 and 180.", "INVALID_COORDINATES");
             }
@@ -200,7 +205,7 @@ namespace Doosii.BLL.Services
                 .Include(s => s.Author)
                 .Include(s => s.TaggedStore)
                 .Include(s => s.Images)
-                .Where(s => s.Status == "ACTIVE" &&
+                .Where(s => s.Status == "ACTIVE" && s.Author.Role != "Banned" &&
                     (
                         // Toa do truc tiep tren bai viet
                         (s.Latitude != null && s.Latitude >= minLatDec && s.Latitude <= maxLatDec &&
@@ -232,7 +237,7 @@ namespace Doosii.BLL.Services
                 var dist = GeoCalculator.CalculateDistanceKm(userLat, userLng, itemLat.Value, itemLng.Value);
                 if (dist <= radius)
                 {
-                    nearbyList.Add((post, Math.Round(dist, 2)));
+                    nearbyList.Add((post, dist));
                 }
             }
 
@@ -240,6 +245,7 @@ namespace Doosii.BLL.Services
             var sorted = nearbyList
                 .OrderBy(x => x.DistanceKm)
                 .ThenByDescending(x => x.Post.CreatedAt)
+                .ThenByDescending(x => x.Post.Id)
                 .ToList();
 
             var totalItems = sorted.Count;
@@ -275,12 +281,17 @@ namespace Doosii.BLL.Services
 
             var trimmedStyle = style.Trim();
 
-            // Loc PassPost chua style tuong ung (khong phan biet chu hoa/chu thuong)
-            var query = _db.PassPosts
-                .AsNoTracking()
-                .Where(p => p.Status == "ACTIVE" && p.StyleTags != null && p.StyleTags.ToLower().Contains(trimmedStyle.ToLower()));
+            if (trimmedStyle.Length > 100)
+                throw new ServiceException(400, "Style toi da 100 ky tu.", "INVALID_STYLE");
 
-            var totalItems = await query.CountAsync();
+            // Legacy JSON/CSV tags require exact token matching before pagination.
+            // Read metadata only, then load full rows/images for the requested page.
+            var candidates = await _db.PassPosts.AsNoTracking()
+                .Where(p => p.Status == "ACTIVE" && p.Author.Role != "Banned" && p.StyleTags != null)
+                .Select(p => new { p.Id, p.StyleTags, p.CreatedAt }).ToListAsync();
+            var matching = candidates.Where(p => HasStyle(p.StyleTags, trimmedStyle))
+                .OrderByDescending(p => p.CreatedAt).ThenByDescending(p => p.Id).ToList();
+            var totalItems = matching.Count;
             var totalPages = totalItems == 0 ? 0 : (int)Math.Ceiling((double)totalItems / pageSize);
 
             if (totalItems == 0 || page > totalPages)
@@ -296,10 +307,10 @@ namespace Doosii.BLL.Services
                 };
             }
 
-            var passPosts = await query
-                .OrderByDescending(p => p.CreatedAt)
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
+            var ids = matching.Skip((page - 1) * pageSize).Take(pageSize).Select(p => p.Id).ToList();
+            var passPosts = await _db.PassPosts.AsNoTracking()
+                .Where(p => ids.Contains(p.Id) && p.Status == "ACTIVE" && p.Author.Role != "Banned")
+                .OrderByDescending(p => p.CreatedAt).ThenByDescending(p => p.Id)
                 .Include(p => p.Author)
                 .Include(p => p.Images)
                 .ToListAsync();
@@ -395,9 +406,23 @@ namespace Doosii.BLL.Services
                 },
                 Latitude = effectiveLat,
                 Longitude = effectiveLng,
-                DistanceKm = distanceKm,
+                DistanceKm = distanceKm.HasValue ? Math.Round(distanceKm.Value, 2) : null,
                 CreatedAt = s.CreatedAt
             };
+        }
+
+        private static bool HasStyle(string? value, string style)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return false;
+            try
+            {
+                using var json = JsonDocument.Parse(value);
+                if (json.RootElement.ValueKind == JsonValueKind.Array)
+                    return json.RootElement.EnumerateArray().Any(tag => tag.ValueKind == JsonValueKind.String &&
+                        string.Equals(tag.GetString()?.Trim(), style, StringComparison.OrdinalIgnoreCase));
+            }
+            catch (JsonException) { /* Legacy comma-separated tags. */ }
+            return value.Split(',').Any(tag => string.Equals(tag.Trim(), style, StringComparison.OrdinalIgnoreCase));
         }
 
         private class FeedItemMeta

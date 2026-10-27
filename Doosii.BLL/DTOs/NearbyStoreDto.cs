@@ -2,6 +2,7 @@
 {
     public class NearbyStoreDto
     {
+        public int OwnerId { get; set; }
         public int StoreId { get; set; }
         public string StoreName { get; set; } = string.Empty;
         public string? Description { get; set; }

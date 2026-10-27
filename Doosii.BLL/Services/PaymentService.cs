@@ -1,323 +1,144 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using PayOS;
 using PayOS.Models.V2.PaymentRequests;
-using PayOS.Models.Webhooks;
 using Doosii.BLL.DTOs;
 using Doosii.BLL.Interfaces;
+using Doosii.BLL.Exceptions;
 using Doosii.DAL.Data;
 using Doosii.DAL.Models.Order;
 
-namespace Doosii.BLL.Services
+namespace Doosii.BLL.Services;
+public class PaymentService : IPaymentService
 {
-    public class PaymentService : IPaymentService
+    private readonly AppDbContext _context;
+    private readonly IConfiguration _configuration;
+    private readonly ILogger<PaymentService> _logger;
+    private readonly PayOSClient? _payOSClient;
+    private readonly string _checksumKey;
+    private static bool Configured(string? value) => !string.IsNullOrWhiteSpace(value) && !value.Contains("your-payos", StringComparison.OrdinalIgnoreCase);
+    public PaymentService(AppDbContext context, IConfiguration configuration, ILogger<PaymentService> logger, HttpClient? gatewayHttpClient = null)
     {
-        private readonly AppDbContext _context;
-        private readonly IConfiguration _configuration;
-        private readonly ILogger<PaymentService> _logger;
-        private readonly PayOSClient? _payOSClient;
-        private readonly string _checksumKey;
-
-        public PaymentService(
-            AppDbContext context,
-            IConfiguration configuration,
-            ILogger<PaymentService> logger)
+        _context = context; _configuration = configuration; _logger = logger;
+        _checksumKey = configuration["PayOS:ChecksumKey"] ?? "";
+        var client = configuration["PayOS:ClientId"]; var key = configuration["PayOS:ApiKey"];
+        if (Configured(client) && Configured(key) && Configured(_checksumKey))
         {
-            _context = context;
-            _configuration = configuration;
-            _logger = logger;
-
-            var clientId = _configuration["PayOS:ClientId"] ?? string.Empty;
-            var apiKey = _configuration["PayOS:ApiKey"] ?? string.Empty;
-            _checksumKey = _configuration["PayOS:ChecksumKey"] ?? "your-payos-checksum-key-1234567890";
-
-            if (!string.IsNullOrWhiteSpace(clientId) &&
-                !string.IsNullOrWhiteSpace(apiKey) &&
-                !clientId.Contains("your-payos") &&
-                !apiKey.Contains("your-payos"))
-            {
-                try
-                {
-                    _payOSClient = new PayOSClient(new PayOSOptions
-                    {
-                        ClientId = clientId,
-                        ApiKey = apiKey,
-                        ChecksumKey = _checksumKey
-                    });
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Không thể khởi tạo PayOSClient với cấu hình hiện tại. Chuyển sang chế độ VietQR Sandbox.");
-                }
-            }
-        }
-
-        public async Task<PaymentQrResponse> CreatePaymentQrAsync(int orderId, int userId)
-        {
-            var order = await _context.Orders
-                .Include(o => o.Items)
-                .FirstOrDefaultAsync(o => o.Id == orderId);
-
-            if (order == null)
-            {
-                throw new KeyNotFoundException($"Không tìm thấy đơn hàng với mã #{orderId}.");
-            }
-
-            if (order.BuyerId != userId)
-            {
-                throw new UnauthorizedAccessException("Bạn không có quyền thực hiện thanh toán cho đơn hàng này.");
-            }
-
-            if (order.Status != OrderStatus.PendingPayment)
-            {
-                throw new InvalidOperationException($"Đơn hàng #{orderId} hiện ở trạng thái '{order.Status}', không thể thanh toán tiếp.");
-            }
-
-            var transferContent = $"DOSI {order.Id}";
-            var totalAmount = (long)order.TotalAmount;
-
-            // 1. Thử tạo payment link qua PayOS SDK nếu có thông tin kết nối hợp lệ
-            if (_payOSClient != null)
-            {
-                try
-                {
-                    var items = order.Items.Select(item =>
-                        new PaymentLinkItem
-                        {
-                            Name = item.ProductNameSnapshot.Length > 50 ? item.ProductNameSnapshot.Substring(0, 47) + "..." : item.ProductNameSnapshot,
-                            Quantity = 1,
-                            Price = (long)item.PriceSnapshot
-                        }
-                    ).ToList();
-
-                    var returnUrl = _configuration["PayOS:ReturnUrl"] ?? "http://localhost:5173/payment/success";
-                    var cancelUrl = _configuration["PayOS:CancelUrl"] ?? "http://localhost:5173/payment/cancel";
-
-                    var paymentRequest = new CreatePaymentLinkRequest
-                    {
-                        OrderCode = order.Id,
-                        Amount = totalAmount,
-                        Description = transferContent,
-                        Items = items,
-                        CancelUrl = cancelUrl,
-                        ReturnUrl = returnUrl
-                    };
-
-                    var result = await _payOSClient.PaymentRequests.CreateAsync(paymentRequest);
-
-                    return new PaymentQrResponse
-                    {
-                        OrderId = order.Id,
-                        OrderCode = result.OrderCode,
-                        Amount = result.Amount,
-                        OrderStatus = order.Status,
-                        CheckoutUrl = result.CheckoutUrl,
-                        QrCodeUrl = result.QrCode,
-                        TransferContent = result.Description ?? transferContent,
-                        AccountName = result.AccountName,
-                        AccountNumber = result.AccountNumber,
-                        BankBin = result.Bin,
-                        BankName = "MBBank",
-                        CreatedAt = DateTime.UtcNow
-                    };
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Gọi PayOS createPaymentLink thất bại, tự động fallback sang VietQR Sandbox cho đơn #{OrderId}", order.Id);
-                }
-            }
-
-            // 2. Chế độ VietQR Sandbox chuẩn NAPAS (dành cho local testing / dev environment)
-            var mbBin = "970422"; // MBBank NAPAS BIN
-            var testAccountNo = "0987654321";
-            var testAccountName = "SAN GIAO DICH DOOSII";
-            var vietQrUrl = $"https://img.vietqr.io/image/{mbBin}-{testAccountNo}-compact2.png?amount={totalAmount}&addInfo=DOSI%20{order.Id}&accountName=SAN%20GIAO%20DICH%20DOOSII";
-
-            return new PaymentQrResponse
-            {
-                OrderId = order.Id,
-                OrderCode = order.Id,
-                Amount = totalAmount,
-                OrderStatus = order.Status,
-                CheckoutUrl = $"https://pay.payos.vn/web/{order.Id}",
-                QrCodeUrl = vietQrUrl,
-                TransferContent = transferContent,
-                AccountName = testAccountName,
-                AccountNumber = testAccountNo,
-                BankBin = mbBin,
-                BankName = "MBBank (Quân Đội)",
-                CreatedAt = DateTime.UtcNow
-            };
-        }
-
-        public async Task<bool> ProcessPayOsWebhookAsync(PayOsWebhookPayload payload, string rawBody)
-        {
-            if (payload?.Data == null)
-            {
-                _logger.LogWarning("[WEBHOOK] Payload không hợp lệ hoặc thiếu thuộc tính 'data'.");
-                return false;
-            }
-
-            var data = payload.Data;
-            var orderId = (int)data.OrderCode;
-            var transactionCode = !string.IsNullOrWhiteSpace(data.Reference) ? data.Reference : $"PAYOS-{data.OrderCode}-{DateTime.UtcNow.Ticks}";
-
-            // 1. Xác thực chữ ký số HMAC SHA256
-            var isSignatureValid = await VerifyWebhookSignatureAsync(payload, _checksumKey);
-            if (!isSignatureValid)
-            {
-                _logger.LogWarning("[WEBHOOK] Chữ ký số webhook không hợp lệ cho đơn #{OrderId}.", orderId);
-                return false;
-            }
-
-            // 2. Kiểm tra tính lũy thừa (Idempotency) qua TransactionCode
-            var alreadyProcessed = await _context.PaymentLogs
-                .AnyAsync(p => p.TransactionCode == transactionCode);
-
-            if (alreadyProcessed)
-            {
-                _logger.LogInformation("[WEBHOOK IDEMPOTENT] Giao dịch #{TransactionCode} của đơn #{OrderId} đã được ghi nhận trước đó. Bỏ qua.", transactionCode, orderId);
-                return true;
-            }
-
-            // 3. Tìm đơn hàng
-            var order = await _context.Orders.FirstOrDefaultAsync(o => o.Id == orderId);
-            if (order == null)
-            {
-                _logger.LogWarning("[WEBHOOK] Không tìm thấy đơn hàng #{OrderId} trong cơ sở dữ liệu.", orderId);
-                return false;
-            }
-
-            // 4. Sử dụng Transaction để cập nhật an toàn
-            using var tx = await _context.Database.BeginTransactionAsync();
-            try
-            {
-                // Cập nhật trạng thái sang ESCROW_HOLDING
-                if (order.Status == OrderStatus.PendingPayment)
-                {
-                    order.Status = OrderStatus.EscrowHolding;
-                    order.PaidAt = DateTime.UtcNow;
-                    order.UpdatedAt = DateTime.UtcNow;
-                }
-
-                // Ghi nhận PaymentLog
-                var paymentLog = new PaymentLog
-                {
-                    OrderId = order.Id,
-                    Gateway = "PayOS",
-                    TransactionCode = transactionCode,
-                    Amount = data.Amount > 0 ? data.Amount : order.TotalAmount,
-                    RawPayload = rawBody,
-                    CreatedAt = DateTime.UtcNow
-                };
-                _context.PaymentLogs.Add(paymentLog);
-
-                // Tạo bản ghi EscrowTransaction tạm giữ tiền
-                var escrow = new EscrowTransaction
-                {
-                    OrderId = order.Id,
-                    Amount = order.TotalAmount,
-                    Status = EscrowStatus.Holding,
-                    CreatedAt = DateTime.UtcNow
-                };
-                _context.EscrowTransactions.Add(escrow);
-
-                await _context.SaveChangesAsync();
-                await tx.CommitAsync();
-
-                _logger.LogInformation("[ESCROW HELD] Đơn hàng #{OrderId} đã nhận thanh toán {Amount} VND thành công qua PayOS VietQR. Trạng thái chuyển sang ESCROW_HOLDING.", order.Id, order.TotalAmount);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                await tx.RollbackAsync();
-                _logger.LogError(ex, "[WEBHOOK ERROR] Lỗi trong quá trình cập nhật trạng thái đơn hàng #{OrderId}.", order.Id);
-                throw;
-            }
-        }
-
-        public async Task<PaymentQrResponse> GetPaymentStatusAsync(int orderId, int userId)
-        {
-            var order = await _context.Orders.FirstOrDefaultAsync(o => o.Id == orderId);
-            if (order == null)
-            {
-                throw new KeyNotFoundException($"Không tìm thấy đơn hàng với mã #{orderId}.");
-            }
-
-            if (order.BuyerId != userId && order.SellerId != userId)
-            {
-                throw new UnauthorizedAccessException("Bạn không có quyền xem thông tin thanh toán của đơn hàng này.");
-            }
-
-            return new PaymentQrResponse
-            {
-                OrderId = order.Id,
-                OrderCode = order.Id,
-                Amount = order.TotalAmount,
-                OrderStatus = order.Status,
-                TransferContent = $"DOSI {order.Id}",
-                CreatedAt = order.PaidAt ?? order.CreatedAt
-            };
-        }
-
-        private async Task<bool> VerifyWebhookSignatureAsync(PayOsWebhookPayload payload, string checksumKey)
-        {
-            // Trong môi trường dev/test, nếu chữ ký là "TEST_SIGNATURE" hoặc sandbox thì chấp nhận
-            if (payload.Signature == "TEST_SIGNATURE" || checksumKey.Contains("your-payos"))
-            {
-                return true;
-            }
-
-            if (string.IsNullOrWhiteSpace(payload.Signature) || payload.Data == null)
-            {
-                return false;
-            }
-
-            try
-            {
-                // 1. Thử qua PayOS SDK
-                if (_payOSClient != null)
-                {
-                    var webhook = new Webhook
-                    {
-                        Code = payload.Code ?? "00",
-                        Description = payload.Desc ?? "success",
-                        Success = true,
-                        Data = new WebhookData
-                        {
-                            OrderCode = payload.Data.OrderCode,
-                            Amount = (long)payload.Data.Amount,
-                            Description = payload.Data.Description,
-                            AccountNumber = payload.Data.AccountNumber,
-                            Reference = payload.Data.Reference,
-                            TransactionDateTime = payload.Data.TransactionDateTime,
-                            Currency = payload.Data.Currency,
-                            PaymentLinkId = payload.Data.PaymentLinkId ?? string.Empty
-                        },
-                        Signature = payload.Signature
-                    };
-
-                    var verifiedData = await _payOSClient.Webhooks.VerifyAsync(webhook);
-                    return verifiedData != null;
-                }
-
-                // 2. Tự tính HMAC SHA256 của chuỗi data được sort theo thứ tự alphabet
-                var d = payload.Data;
-                var sortedData = $"amount={(long)d.Amount}&cancel=false&description={d.Description}&orderCode={d.OrderCode}&status=PAID";
-                using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(checksumKey));
-                var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(sortedData));
-                var computedSignature = Convert.ToHexString(hash).ToLower();
-
-                return string.Equals(computedSignature, payload.Signature, StringComparison.OrdinalIgnoreCase);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "[VERIFY SIGNATURE ERROR] Xác thực chữ ký webhook thất bại.");
-                return false;
-            }
+            var options = new PayOSOptions { ClientId = client!, ApiKey = key!, ChecksumKey = _checksumKey, TimeoutMs = 10000, MaxRetries = 0 };
+            if (gatewayHttpClient != null) options.HttpClient = gatewayHttpClient;
+            _payOSClient = new PayOSClient(options);
         }
     }
+    public async Task<PaymentQrResponse> CreatePaymentQrAsync(int orderId, int userId)
+    {
+        await using var tx = await _context.Database.BeginTransactionAsync();
+        var order = await OrderLifecycle.LockAsync(_context, orderId);
+        if (order.BuyerId != userId || order.Buyer.Role == "Banned") throw new UnauthorizedAccessException("Chỉ người mua của đơn được tạo thanh toán.");
+        if (await OrderLifecycle.ExpireAsync(_context, order)) { await tx.CommitAsync(); throw new InvalidOperationException("Đơn đã hết thời gian thanh toán."); }
+        if (order.Status != OrderStatus.PendingPayment) throw new InvalidOperationException("Đơn không còn chờ thanh toán.");
+        if (_payOSClient == null)
+        {
+            await tx.CommitAsync();
+            return new PaymentQrResponse { OrderId = order.Id, OrderCode = order.Id, Amount = order.TotalAmount, OrderStatus = order.Status,
+                IsSandbox = true, QrCodeData = $"DOOSII DEMO ORDER {order.Id} AMOUNT {order.TotalAmount.ToString(CultureInfo.InvariantCulture)}",
+                ExpiresAt = OrderLifecycle.ExpiresAt(order), Message = "Mã minh họa, không dùng để chuyển khoản. Máy chủ chưa cấu hình PayOS." };
+        }
+        if (order.PaymentDetailsJson != null)
+        {
+            var cached = JsonSerializer.Deserialize<PaymentQrResponse>(order.PaymentDetailsJson)!;
+            cached.OrderStatus = order.Status; cached.ServerTime = DateTime.UtcNow; await tx.CommitAsync(); return cached;
+        }
+        if (order.TotalAmount != decimal.Truncate(order.TotalAmount) || order.TotalAmount > long.MaxValue) throw new InvalidOperationException("Thanh toán yêu cầu số tiền VND nguyên.");
+        CreatePaymentLinkResponse result;
+        try
+        {
+            var request = new CreatePaymentLinkRequest { OrderCode = order.Id, Amount = (long)order.TotalAmount, Description = $"DOSI {order.Id}",
+                ReturnUrl = _configuration["PayOS:ReturnUrl"] ?? "http://localhost:5173/payment/success",
+                CancelUrl = _configuration["PayOS:CancelUrl"] ?? "http://localhost:5173/payment/cancel",
+                ExpiredAt = (int)new DateTimeOffset(OrderLifecycle.ExpiresAt(order)).ToUnixTimeSeconds() };
+            try { result = await _payOSClient.PaymentRequests.CreateAsync(request); }
+            catch (Exception createError)
+            {
+                _logger.LogInformation(createError, "Checking existing PayOS link after create failure for order {OrderId}", order.Id);
+                // A previous request may have reached PayOS before the connection was interrupted.
+                var link = await _payOSClient.PaymentRequests.GetAsync((long)order.Id);
+                if (link.OrderCode != order.Id || link.Amount != order.TotalAmount || link.Status != PaymentLinkStatus.Pending) throw;
+                // Reuse the provider's hosted page when recovering; never invent bank/QR information.
+                result = new CreatePaymentLinkResponse { OrderCode = link.OrderCode, Amount = link.Amount, PaymentLinkId = link.Id,
+                    CheckoutUrl = "https://pay.payos.vn/web/" + link.Id, Description = $"DOSI {order.Id}" };
+            }
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "PayOS unavailable for order {OrderId}", order.Id); throw new ServiceException(503, "Không tạo được thanh toán. Vui lòng thử lại sau.", "PAYMENT_UNAVAILABLE"); }
+        if (OrderLifecycle.ExpiresAt(order) <= DateTime.UtcNow) { await OrderLifecycle.ExpireAsync(_context, order); await tx.CommitAsync(); throw new InvalidOperationException("Đơn đã hết hạn trong lúc tạo thanh toán."); }
+        if (result.OrderCode != order.Id || result.Amount != order.TotalAmount || string.IsNullOrWhiteSpace(result.PaymentLinkId)) throw new ServiceException(502, "Thông tin thanh toán từ cổng không khớp đơn hàng.", "PAYMENT_MISMATCH");
+        var response = new PaymentQrResponse { OrderId = order.Id, OrderCode = result.OrderCode, Amount = result.Amount, OrderStatus = order.Status,
+            CheckoutUrl = result.CheckoutUrl ?? "", QrCodeData = result.QrCode ?? "", TransferContent = result.Description ?? $"DOSI {order.Id}",
+            AccountName = result.AccountName ?? "", AccountNumber = result.AccountNumber ?? "", BankBin = result.Bin ?? "", BankName = "",
+            ExpiresAt = OrderLifecycle.ExpiresAt(order) };
+        order.PaymentLinkId = result.PaymentLinkId; order.PaymentDetailsJson = JsonSerializer.Serialize(response);
+        await _context.SaveChangesAsync(); await tx.CommitAsync(); return response;
+    }
+    public async Task<bool> ProcessPayOsWebhookAsync(PayOsWebhookPayload payload, string rawBody)
+    {
+        if (!VerifySignature(payload.Signature, rawBody) || payload.Data == null || !payload.Success || payload.Code != "00" || payload.Data.Code != "00") return false;
+        var data = payload.Data;
+        if (data.OrderCode <= 0 || data.OrderCode > int.MaxValue || data.Currency != "VND" || string.IsNullOrWhiteSpace(data.Reference) || data.Reference.Length > 100 || data.Amount <= 0) return false;
+        await using var tx = await _context.Database.BeginTransactionAsync();
+        Order order;
+        try { order = await OrderLifecycle.LockAsync(_context, (int)data.OrderCode); } catch (KeyNotFoundException) { _logger.LogWarning("Verified payment event for unknown order {OrderId}", data.OrderCode); return true; }
+        var previous = await _context.PaymentLogs.AsNoTracking().FirstOrDefaultAsync(p => p.Gateway == "PayOS" && p.TransactionCode == data.Reference);
+        if (previous != null) return previous.OrderId == order.Id && previous.Amount == data.Amount;
+        if (string.IsNullOrEmpty(order.PaymentLinkId) || order.PaymentLinkId != data.PaymentLinkId) return false;
+        await OrderLifecycle.ExpireAsync(_context, order);
+        var applied = order.Status == OrderStatus.PendingPayment && data.Amount == order.TotalAmount;
+        var payment = order.PaymentDetailsJson == null ? null : JsonSerializer.Deserialize<PaymentQrResponse>(order.PaymentDetailsJson);
+        if (payment == null || payment.IsSandbox || (!string.IsNullOrEmpty(payment.AccountNumber) && payment.AccountNumber != data.AccountNumber)) return false;
+        foreach (var item in order.Items)
+        {
+            var product = await _context.Products.FromSqlInterpolated($"SELECT * FROM [store].[Products] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {item.ProductId}").SingleOrDefaultAsync();
+            if (product?.Status != "LOCKED" || product.ReservedOrderId != order.Id) applied = false;
+        }
+        if (applied)
+        {
+            order.Status = OrderStatus.EscrowHolding; order.PaidAt = DateTime.UtcNow; order.UpdatedAt = DateTime.UtcNow;
+            _context.EscrowTransactions.Add(new EscrowTransaction { OrderId = order.Id, Amount = order.TotalAmount, Status = EscrowStatus.Holding });
+        }
+        _context.PaymentLogs.Add(new PaymentLog { OrderId = order.Id, Gateway = "PayOS", TransactionCode = data.Reference, Amount = data.Amount,
+            RawPayload = rawBody, ProcessingStatus = applied ? "APPLIED" : "REVIEW_REQUIRED" });
+        await _context.SaveChangesAsync(); await tx.CommitAsync();
+        if (!applied) _logger.LogWarning("Payment for order {OrderId} requires reconciliation; order was not credited", order.Id);
+        return true;
+    }
+    public async Task<PaymentQrResponse> GetPaymentStatusAsync(int orderId, int userId)
+    {
+        await using var tx = await _context.Database.BeginTransactionAsync();
+        var order = await OrderLifecycle.LockAsync(_context, orderId);
+        if (order.BuyerId != userId && order.SellerId != userId) throw new UnauthorizedAccessException("Bạn không có quyền xem thanh toán của đơn.");
+        await OrderLifecycle.ExpireAsync(_context, order); await tx.CommitAsync();
+        return new PaymentQrResponse { OrderId = order.Id, Amount = order.TotalAmount, OrderStatus = order.Status, ExpiresAt = OrderLifecycle.ExpiresAt(order) };
+    }
+    private bool VerifySignature(string? signature, string rawBody)
+    {
+        if (!Configured(_checksumKey) || string.IsNullOrEmpty(signature)) return false;
+        try
+        {
+            using var document = JsonDocument.Parse(rawBody);
+            var data = document.RootElement.GetProperty("data");
+            var fields = data.EnumerateObject().OrderBy(p => p.Name, StringComparer.Ordinal).Select(p => p.Name + "=" + Value(p.Value));
+            var signed = Encoding.UTF8.GetBytes(string.Join("&", fields));
+            var expected = HMACSHA256.HashData(Encoding.UTF8.GetBytes(_checksumKey), signed);
+            return CryptographicOperations.FixedTimeEquals(expected, Convert.FromHexString(signature));
+        }
+        catch (Exception ex) when (ex is JsonException or FormatException or InvalidOperationException or KeyNotFoundException) { return false; }
+    }
+    private static string Value(JsonElement value) => value.ValueKind switch {
+        JsonValueKind.Null => "", JsonValueKind.String => value.GetString() is "null" or "undefined" ? "" : value.GetString()!,
+        JsonValueKind.Number => value.GetDecimal().ToString("G29", CultureInfo.InvariantCulture),
+        JsonValueKind.True => "true", JsonValueKind.False => "false", _ => throw new InvalidOperationException("Unsupported signature field")
+    };
 }

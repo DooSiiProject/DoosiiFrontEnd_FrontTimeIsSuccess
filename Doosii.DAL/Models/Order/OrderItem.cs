@@ -20,13 +20,13 @@ namespace Doosii.DAL.Models.Order
         public int ProductId { get; set; }
 
         [Required]
-        [MaxLength(256)]
+        [MaxLength(300)]
         public string ProductNameSnapshot { get; set; } = string.Empty;
 
         [Column(TypeName = "decimal(18,2)")]
         public decimal PriceSnapshot { get; set; }
 
-        [MaxLength(500)]
+        [MaxLength(1000)]
         public string? ThumbnailSnapshot { get; set; }
     }
 }

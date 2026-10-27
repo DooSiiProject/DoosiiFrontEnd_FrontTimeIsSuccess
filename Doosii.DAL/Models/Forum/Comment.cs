@@ -20,6 +20,9 @@ namespace Doosii.DAL.Models.Forum
         [Required]
         public int PostId { get; set; }
 
+        [Required, MaxLength(10)]
+        public string PostType { get; set; } = "LEGACY";
+
         /// <summary>
         /// ID tac gia binh luan (FK den auth.Users).
         /// </summary>
@@ -37,6 +40,8 @@ namespace Doosii.DAL.Models.Forum
         [Required]
         [MaxLength(1000)]
         public string Content { get; set; } = string.Empty;
+
+        public Guid? ClientRequestId { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

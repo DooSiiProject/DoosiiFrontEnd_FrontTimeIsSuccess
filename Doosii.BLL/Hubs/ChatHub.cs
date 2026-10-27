@@ -1,243 +1,113 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 using Doosii.BLL.DTOs;
 using Doosii.BLL.Exceptions;
 using Doosii.BLL.Interfaces;
+using Doosii.DAL.Data;
 
-namespace Doosii.BLL.Hubs
+namespace Doosii.BLL.Hubs;
+
+[Authorize]
+public class ChatHub(IChatService chatService, AppDbContext db) : Hub
 {
-    /// <summary>
-    /// SignalR Hub cho tinh nang nhan tin 1-1 giua buyer va seller.
-    /// JWT authentication bat buoc.
-    /// JWT co the truyen qua Authorization header hoac query string ?access_token=...
-    /// </summary>
-    [Authorize]
-    public class ChatHub : Hub
+    private int UserId() => int.TryParse(Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) && id > 0
+        ? id : throw new HubException("UNAUTHORIZED");
+
+    public override async Task OnConnectedAsync()
     {
-        private readonly IChatService _chatService;
-
-        public ChatHub(IChatService chatService)
+        var id = UserId();
+        if (!await db.Users.AsNoTracking().AnyAsync(u => u.Id == id && u.Role != "Banned"))
         {
-            _chatService = chatService;
+            Context.Abort();
+            throw new HubException("CHAT_ACCESS_DENIED");
         }
+        await Groups.AddToGroupAsync(Context.ConnectionId, $"user_{id}");
+        await base.OnConnectedAsync();
+    }
 
-        // =====================================================================
-        // LIFECYCLE
-        // =====================================================================
-
-        public override async Task OnConnectedAsync()
+    private async Task Execute(Func<Task> action)
+    {
+        try { await action(); }
+        catch (ServiceException ex)
         {
-            var userId = GetCurrentUserId();
-            if (userId != null)
-            {
-                // Tham gia group ca nhan de nhan notification
-                await Groups.AddToGroupAsync(Context.ConnectionId, $"user_{userId}");
-            }
-            await base.OnConnectedAsync();
+            await Clients.Caller.SendAsync("ChatError", new { Code = ex.ErrorCode, Message = ex.Message });
+            throw new HubException(ex.ErrorCode);
         }
-
-        public override async Task OnDisconnectedAsync(Exception? exception)
+        catch (HubException ex)
         {
-            var userId = GetCurrentUserId();
-            if (userId != null)
-            {
-                await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"user_{userId}");
-            }
-            await base.OnDisconnectedAsync(exception);
+            await Clients.Caller.SendAsync("ChatError", new { Code = ex.Message, Message = "Conversation access denied" });
+            throw;
         }
-
-        // =====================================================================
-        // CLIENT -> SERVER METHODS
-        // =====================================================================
-
-        /// <summary>
-        /// Client tham gia vao group cua conversation.
-        /// Chi thanh vien moi duoc join.
-        /// </summary>
-        public async Task JoinConversation(int conversationId)
+        catch
         {
-            var userId = GetCurrentUserId();
-            if (userId == null)
-            {
-                await Clients.Caller.SendAsync("ChatError", new { Code = "UNAUTHORIZED", Message = "Not authenticated" });
-                return;
-            }
-
-            try
-            {
-                var isMember = await _chatService.IsMemberAsync(conversationId, userId.Value);
-                if (!isMember)
-                {
-                    await Clients.Caller.SendAsync("ChatError", new { Code = "CHAT_ACCESS_DENIED", Message = "You are not a member of this conversation" });
-                    return;
-                }
-
-                var groupName = $"conversation_{conversationId}";
-                await Groups.AddToGroupAsync(Context.ConnectionId, groupName);
-                await Clients.Group(groupName).SendAsync("UserJoined", new { UserId = userId.Value, ConversationId = conversationId });
-            }
-            catch (ServiceException ex)
-            {
-                await Clients.Caller.SendAsync("ChatError", new { Code = ex.ErrorCode, Message = ex.Message });
-            }
-            catch
-            {
-                await Clients.Caller.SendAsync("ChatError", new { Code = "MESSAGE_SEND_FAILED", Message = "An error occurred joining the conversation" });
-            }
-        }
-
-        /// <summary>
-        /// Client roi khoi group cua conversation.
-        /// </summary>
-        public async Task LeaveConversation(int conversationId)
-        {
-            var userId = GetCurrentUserId();
-            var groupName = $"conversation_{conversationId}";
-
-            await Groups.RemoveFromGroupAsync(Context.ConnectionId, groupName);
-
-            if (userId != null)
-            {
-                await Clients.Group(groupName).SendAsync("UserLeft", new { UserId = userId.Value, ConversationId = conversationId });
-            }
-        }
-
-        /// <summary>
-        /// Client gui TEXT message.
-        /// Luu DB truoc, broadcast sau. Neu luu loi thi khong broadcast.
-        /// </summary>
-        public async Task SendMessage(int conversationId, string content)
-        {
-            var userId = GetCurrentUserId();
-            if (userId == null)
-            {
-                await Clients.Caller.SendAsync("ChatError", new { Code = "UNAUTHORIZED", Message = "Not authenticated" });
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(content))
-            {
-                await Clients.Caller.SendAsync("ChatError", new { Code = "INVALID_MESSAGE", Message = "Message content cannot be empty" });
-                return;
-            }
-
-            if (content.Length > 2000)
-            {
-                await Clients.Caller.SendAsync("ChatError", new { Code = "INVALID_MESSAGE", Message = "Message content cannot exceed 2000 characters" });
-                return;
-            }
-
-            try
-            {
-                // Luu DB truoc
-                var messageDto = await _chatService.SendTextMessageAsync(conversationId, userId.Value, content);
-
-                // Broadcast sau khi luu thanh cong
-                var groupName = $"conversation_{conversationId}";
-                await Clients.Group(groupName).SendAsync("ReceiveMessage", messageDto);
-            }
-            catch (ServiceException ex)
-            {
-                await Clients.Caller.SendAsync("ChatError", new { Code = ex.ErrorCode, Message = ex.Message });
-            }
-            catch
-            {
-                await Clients.Caller.SendAsync("ChatError", new { Code = "MESSAGE_SEND_FAILED", Message = "Failed to send message. Please try again." });
-            }
-        }
-
-        /// <summary>
-        /// Client gui PRODUCT_CARD message.
-        /// </summary>
-        public async Task SendProductCard(int conversationId, int productId)
-        {
-            var userId = GetCurrentUserId();
-            if (userId == null)
-            {
-                await Clients.Caller.SendAsync("ChatError", new { Code = "UNAUTHORIZED", Message = "Not authenticated" });
-                return;
-            }
-
-            try
-            {
-                var messageDto = await _chatService.SendProductCardAsync(conversationId, userId.Value, productId);
-
-                var groupName = $"conversation_{conversationId}";
-                await Clients.Group(groupName).SendAsync("ReceiveProductCard", messageDto);
-            }
-            catch (ServiceException ex)
-            {
-                await Clients.Caller.SendAsync("ChatError", new { Code = ex.ErrorCode, Message = ex.Message });
-            }
-            catch
-            {
-                await Clients.Caller.SendAsync("ChatError", new { Code = "MESSAGE_SEND_FAILED", Message = "Failed to send product card. Please try again." });
-            }
-        }
-
-        /// <summary>
-        /// Client danh dau message da doc.
-        /// Phat su kien MessagesRead cho thanh vien con lai.
-        /// </summary>
-        public async Task MarkMessagesAsRead(int conversationId)
-        {
-            var userId = GetCurrentUserId();
-            if (userId == null)
-            {
-                await Clients.Caller.SendAsync("ChatError", new { Code = "UNAUTHORIZED", Message = "Not authenticated" });
-                return;
-            }
-
-            try
-            {
-                var status = await _chatService.MarkMessagesAsReadAsync(conversationId, userId.Value);
-
-                // Thong bao cho nguoi gui goc (nguoi kia) biet tin nhan da duoc doc
-                await Clients.Group($"conversation_{conversationId}").SendAsync("MessagesRead", status);
-            }
-            catch (ServiceException ex)
-            {
-                await Clients.Caller.SendAsync("ChatError", new { Code = ex.ErrorCode, Message = ex.Message });
-            }
-            catch
-            {
-                await Clients.Caller.SendAsync("ChatError", new { Code = "MESSAGE_SEND_FAILED", Message = "An error occurred" });
-            }
-        }
-
-        /// <summary>
-        /// Client thong bao trang thai typing (dang nhap tin nhan).
-        /// Phat su kien UserTyping cho thanh vien con lai trong phong chat.
-        /// </summary>
-        public async Task SendTyping(int conversationId, bool isTyping)
-        {
-            var userId = GetCurrentUserId();
-            if (userId == null)
-            {
-                await Clients.Caller.SendAsync("ChatError", new { Code = "UNAUTHORIZED", Message = "Not authenticated" });
-                return;
-            }
-
-            var typingDto = new UserTypingDto
-            {
-                ConversationId = conversationId,
-                UserId = userId.Value,
-                IsTyping = isTyping
-            };
-
-            await Clients.OthersInGroup($"conversation_{conversationId}").SendAsync("UserTyping", typingDto);
-        }
-
-        // =====================================================================
-        // PRIVATE HELPERS
-        // =====================================================================
-
-        private int? GetCurrentUserId()
-        {
-            var claim = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (int.TryParse(claim, out int userId)) return userId;
-            return null;
+            await Clients.Caller.SendAsync("ChatError", new { Code = "CHAT_OPERATION_FAILED", Message = "Chat operation failed" });
+            throw new HubException("CHAT_OPERATION_FAILED");
         }
     }
+
+    private async Task<int> Member(int conversationId)
+    {
+        var id = UserId();
+        if (conversationId <= 0 || !await chatService.IsMemberAsync(conversationId, id))
+            throw new HubException("CHAT_ACCESS_DENIED");
+        return id;
+    }
+
+    // Failed joins reject invoke(), so the client cannot treat a denied room as joined.
+    public Task JoinConversation(int conversationId) => Execute(async () =>
+    {
+        var id = await Member(conversationId);
+        await Groups.AddToGroupAsync(Context.ConnectionId, $"conversation_{conversationId}");
+        await Clients.Group($"conversation_{conversationId}").SendAsync("UserJoined", new { UserId = id, ConversationId = conversationId });
+    });
+
+    public Task LeaveConversation(int conversationId) => Execute(async () =>
+    {
+        var id = await Member(conversationId);
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"conversation_{conversationId}");
+        await Clients.Group($"conversation_{conversationId}").SendAsync("UserLeft", new { UserId = id, ConversationId = conversationId });
+    });
+
+    // FE writes remain REST + clientRequestId. Legacy hub writes keep service-side
+    // membership, banned-account, closed-conversation and product ownership checks.
+    public Task SendMessage(int conversationId, string content) => Execute(async () =>
+    {
+        var message = await chatService.SendTextMessageAsync(conversationId, UserId(), content);
+        await Clients.Group($"conversation_{conversationId}").SendAsync("ReceiveMessage", message);
+        await InboxChanged(conversationId);
+    });
+
+    public Task SendProductCard(int conversationId, int productId) => Execute(async () =>
+    {
+        var message = await chatService.SendProductCardAsync(conversationId, UserId(), productId);
+        await Clients.Group($"conversation_{conversationId}").SendAsync("ReceiveProductCard", message);
+        await InboxChanged(conversationId);
+    });
+
+    public Task MarkMessagesAsRead(int conversationId) => Execute(async () =>
+    {
+        var status = await chatService.MarkMessagesAsReadAsync(conversationId, UserId());
+        await Clients.Group($"conversation_{conversationId}").SendAsync("MessagesRead", status);
+        await InboxChanged(conversationId);
+    });
+
+    private async Task InboxChanged(int conversationId)
+    {
+        try {
+            var conversation = await chatService.GetConversationAsync(conversationId, UserId());
+            await Clients.Groups(new[] { $"user_{conversation.BuyerId}", $"user_{conversation.SellerId}" })
+                .SendAsync("ConversationChanged", new { ConversationId = conversationId });
+        } catch { /* Stored data is recovered by REST. */ }
+    }
+
+    public Task SendTyping(int conversationId, bool isTyping) => Execute(async () =>
+    {
+        var id = UserId();
+        var conversation = await chatService.GetConversationAsync(conversationId, id);
+        if (conversation.IsClosed) throw new HubException("CONVERSATION_CLOSED");
+        await Clients.OthersInGroup($"conversation_{conversationId}").SendAsync("UserTyping",
+            new UserTypingDto { ConversationId = conversationId, UserId = id, IsTyping = isTyping });
+    });
 }

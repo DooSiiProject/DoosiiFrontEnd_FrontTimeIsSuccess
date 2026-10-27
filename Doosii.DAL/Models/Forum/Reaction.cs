@@ -20,6 +20,9 @@ namespace Doosii.DAL.Models.Forum
         [Required]
         public int PostId { get; set; }
 
+        [Required, MaxLength(10)]
+        public string PostType { get; set; } = "LEGACY";
+
         /// <summary>
         /// ID nguoi dung da tha cam xuc (FK den auth.Users).
         /// </summary>

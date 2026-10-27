@@ -10,8 +10,5 @@ namespace Doosii.BLL.DTOs
 
         [MaxLength(500, ErrorMessage = "AvatarUrl khong duoc vuot qua 500 ky tu.")]
         public string? AvatarUrl { get; set; }
-
-        [MaxLength(500, ErrorMessage = "Dia chi giao hang khong duoc vuot qua 500 ky tu.")]
-        public string? DeliveryAddress { get; set; }
     }
 }

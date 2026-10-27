@@ -50,17 +50,20 @@ namespace Doosii.BLL.Services
                 throw new ServiceException(401, "Tai khoan khong hop le.", "UNAUTHORIZED");
             }
 
+            if (author.Role == "Banned") throw new ServiceException(403, "Tai khoan da bi khoa.", "USER_BANNED");
+            CommunityPostingRules.ValidateImages(request.Images);
+
             // ---- 1. Input Validation ----
             if (string.IsNullOrWhiteSpace(request.Title) || request.Title.Trim().Length > 150)
                 throw new ServiceException(400, "Title la bat buoc va toi da 150 ky tu.", "INVALID_TITLE");
 
-            if (string.IsNullOrWhiteSpace(request.Description))
+            if (string.IsNullOrWhiteSpace(request.Description) || request.Description.Length > 5000)
                 throw new ServiceException(400, "Description la bat buoc.", "INVALID_DESCRIPTION");
 
-            if (request.Price <= 0)
+            if (request.Price <= 0 || decimal.Round(request.Price, 2) != request.Price || request.Price > 9999999999999999.99m)
                 throw new ServiceException(400, "Price phai lon hon 0.", "INVALID_PRICE");
 
-            if (string.IsNullOrWhiteSpace(request.Size))
+            if (string.IsNullOrWhiteSpace(request.Size) || request.Size.Length > 50)
                 throw new ServiceException(400, "Size la bat buoc.", "INVALID_SIZE");
 
             if (request.ConditionPercent < 0 || request.ConditionPercent > 100)
@@ -82,6 +85,8 @@ namespace Doosii.BLL.Services
                 if (string.IsNullOrEmpty(ext) || !AllowedExtensions.Contains(ext))
                     throw new ServiceException(400, $"Dinh dang file '{ext}' khong duoc ho tro. Chi chap nhan .jpg, .jpeg, .png, .webp.", "INVALID_IMAGE_FORMAT");
             }
+
+            if (request.StyleTags?.Length > 500) throw new ServiceException(400, "Phong cach toi da 500 ky tu.", "INVALID_STYLE");
 
             // ---- 2. Daily Limit Check (Max 10 bai trong 24h) ----
             var since = DateTime.UtcNow.AddHours(-24);
@@ -128,9 +133,13 @@ namespace Doosii.BLL.Services
             }
 
             // ---- 5. Database Transaction ----
-            await using var transaction = await _db.Database.BeginTransactionAsync();
             try
             {
+                await using var transaction = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+                var liveAuthor = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == authorId);
+                if (liveAuthor == null || liveAuthor.Role == "Banned") throw new ServiceException(403, "Tai khoan khong the dang bai.", "USER_BANNED");
+                if (await _db.PassPosts.CountAsync(p => p.AuthorId == authorId && p.CreatedAt >= since) >= MaxDailyPosts)
+                    throw new ServiceException(429, "Ban da dat gioi han 10 bai pass trong 24 gio.", "PASS_POST_DAILY_LIMIT_REACHED");
                 var passPost = new PassPost
                 {
                     AuthorId = authorId,
@@ -183,13 +192,13 @@ namespace Doosii.BLL.Services
             }
             catch (Exception ex)
             {
-                await transaction.RollbackAsync();
                 _logger.LogError(ex, "Database error creating PassPost for user {AuthorId}, rolling back {Count} Cloudinary image(s)",
                     authorId, uploadedImages.Count);
 
                 // Xoa anh tren Cloudinary vi database insert that bai
                 await RollbackUploadedImagesAsync(uploadedImages);
 
+                if (ex is ServiceException) throw;
                 throw new ServiceException(500, "Tao bai dang that bai do loi he thong.", "INTERNAL_ERROR");
             }
         }
@@ -203,7 +212,7 @@ namespace Doosii.BLL.Services
             var post = await _db.PassPosts
                 .Include(p => p.Author)
                 .Include(p => p.Images.OrderBy(i => i.DisplayOrder))
-                .FirstOrDefaultAsync(p => p.Id == postId && p.Status != "HIDDEN");
+                .FirstOrDefaultAsync(p => p.Id == postId && (p.Status == "ACTIVE" || p.Status == "LOCKED" || p.Status == "SOLD") && p.Author.Role != "Banned");
 
             if (post == null) return null;
 

@@ -12,6 +12,7 @@ namespace Doosii.BLL.DTOs
         public decimal EscrowFee { get; set; }
         public decimal TotalAmount { get; set; }
         public string Status { get; set; } = string.Empty;
+        public string PaymentMethod { get; set; } = "PAYOS";
         public string ReceiverName { get; set; } = string.Empty;
         public string ReceiverPhone { get; set; } = string.Empty;
         public string ShippingAddress { get; set; } = string.Empty;
@@ -20,7 +21,13 @@ namespace Doosii.BLL.DTOs
         public string? PackageImageUrl { get; set; }
         public DateTime? PaidAt { get; set; }
         public DateTime? ShippedAt { get; set; }
+        public DateTime? DeliveredAt { get; set; }
+        public DateTime? DisputeDeadline { get; set; }
+        public bool CanOpenDispute { get; set; }
         public DateTime? CompletedAt { get; set; }
+        public DateTime PaymentExpiresAt { get; set; }
+        public DateTime ServerTime { get; set; } = DateTime.UtcNow;
+        public string Version { get; set; } = "";
         public DateTime CreatedAt { get; set; }
         public string PaymentTransferSyntax { get; set; } = string.Empty;
         public List<OrderItemDto> Items { get; set; } = new List<OrderItemDto>();

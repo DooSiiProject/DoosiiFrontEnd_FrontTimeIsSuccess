@@ -1,3 +1,5 @@
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -9,6 +11,13 @@ using Doosii.BLL.Services;
 using Doosii.DAL.Data;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddRateLimiter(options => {
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("password-recovery", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions {
+            PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true
+        }));
+});
 
 // 1. Cấu hình EF Core với SQL Server
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
@@ -23,12 +32,16 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IStoreService, StoreService>();
+builder.Services.AddScoped<IShopRelocationService, ShopRelocationService>();
 builder.Services.AddScoped<IProductService, ProductService>();
+builder.Services.AddScoped<IProductGroupService, ProductGroupService>();
 builder.Services.AddScoped<IStoreReviewService, StoreReviewService>();
 builder.Services.AddSingleton<ICloudinaryService, CloudinaryService>();
+builder.Services.AddScoped<UploadedImageService>();
 builder.Services.AddScoped<IPassPostService, PassPostService>();
 builder.Services.AddScoped<ISpotSharingService, SpotSharingService>();
 builder.Services.AddScoped<ICommunityFeedService, CommunityFeedService>();
+builder.Services.AddScoped<ICommunityInteractionService, CommunityInteractionService>();
 builder.Services.AddScoped<ICommentService, CommentService>();
 builder.Services.AddScoped<IReactionService, ReactionService>();
 builder.Services.AddScoped<IPostReportService, PostReportService>();
@@ -83,7 +96,7 @@ builder.Services.AddAuthentication(options =>
         {
             var accessToken = context.Request.Query["access_token"];
             var path = context.HttpContext.Request.Path;
-            if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+            if (!string.IsNullOrEmpty(accessToken) && (path.StartsWithSegments("/hubs/chat") || path.StartsWithSegments("/hubs/notifications")))
             {
                 context.Token = accessToken;
             }
@@ -141,7 +154,8 @@ using (var scope = app.Services.CreateScope())
     try
     {
         var dbContext = services.GetRequiredService<AppDbContext>();
-        dbContext.Database.Migrate();
+        await dbContext.Database.MigrateAsync();
+        await CategoryReferenceData.EnsureAsync(dbContext);
         Console.WriteLine("--> Database migration applied successfully!");
 
         // Khởi tạo tài khoản Admin mặc định nếu chưa tồn tại
@@ -176,9 +190,10 @@ app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapControllers();
-app.MapHub<Doosii.BLL.Hubs.NotificationHub>("/hubs/notifications");
-app.MapHub<Doosii.BLL.Hubs.ChatHub>("/hubs/chat");
+app.MapHub<Doosii.BLL.Hubs.NotificationHub>("/hubs/notifications", options => options.CloseOnAuthenticationExpiration = true);
+app.MapHub<Doosii.BLL.Hubs.ChatHub>("/hubs/chat", options => options.CloseOnAuthenticationExpiration = true);
 
 app.Run();

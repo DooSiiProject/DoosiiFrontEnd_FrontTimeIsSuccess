@@ -3,6 +3,7 @@ namespace Doosii.BLL.DTOs
     public class WithdrawalResponse
     {
         public int Id { get; set; }
+        public Guid? ClientRequestId { get; set; }
         public int UserId { get; set; }
         public string BankName { get; set; } = string.Empty;
         public string AccountNumber { get; set; } = string.Empty;

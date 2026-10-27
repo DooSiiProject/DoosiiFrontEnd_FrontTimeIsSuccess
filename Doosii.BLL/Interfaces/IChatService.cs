@@ -7,6 +7,7 @@ namespace Doosii.BLL.Interfaces
         /// <summary>
         /// Tao hoac lay conversation hien co giua buyer va seller (co the theo product).
         /// </summary>
+        Task<ConversationDto> GetConversationAsync(int conversationId, int userId);
         Task<ConversationDto> GetOrCreateConversationAsync(int buyerId, int sellerId, int? productId);
 
         /// <summary>
@@ -18,23 +19,23 @@ namespace Doosii.BLL.Interfaces
         /// Lay lich su chat cua mot conversation (phan trang, sort by SentAt ASC).
         /// Kiem tra quyen truy cap.
         /// </summary>
-        Task<PagedResult<ChatMessageDto>> GetMessagesAsync(int conversationId, int userId, GetMessagesQuery query);
+        Task<ChatMessagesPageDto> GetMessagesAsync(int conversationId, int userId, GetMessagesQuery query);
 
         /// <summary>
         /// Gui TEXT message, luu DB va tra DTO de broadcast.
         /// </summary>
-        Task<ChatMessageDto> SendTextMessageAsync(int conversationId, int senderId, string content);
+        Task<ChatMessageDto> SendTextMessageAsync(int conversationId, int senderId, string content, Guid? clientRequestId = null);
 
         /// <summary>
         /// Gui PRODUCT_CARD message, luu DB va tra DTO de broadcast.
         /// </summary>
-        Task<ChatMessageDto> SendProductCardAsync(int conversationId, int senderId, int productId);
+        Task<ChatMessageDto> SendProductCardAsync(int conversationId, int senderId, int productId, Guid? clientRequestId = null);
 
         /// <summary>
         /// Danh dau cac message cua nguoi kia la da doc.
         /// Tra ve ReadStatusDto de phat SignalR event.
         /// </summary>
-        Task<ReadStatusDto> MarkMessagesAsReadAsync(int conversationId, int userId);
+        Task<ReadStatusDto> MarkMessagesAsReadAsync(int conversationId, int userId, int? upToId = null);
 
         /// <summary>
         /// Kiem tra user co la thanh vien cua conversation (buyer hoac seller).
@@ -47,3 +48,4 @@ namespace Doosii.BLL.Interfaces
         Task<ProductCardDto?> GetProductCardAsync(int productId);
     }
 }
+

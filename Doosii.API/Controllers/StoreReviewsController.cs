@@ -1,4 +1,4 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Doosii.BLL.DTOs;
@@ -45,9 +45,9 @@ namespace Doosii.API.Controllers
             {
                 return StatusCode(ex.StatusCode, ApiResponse.Fail(ex.Message, new List<string> { ex.ErrorCode }));
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string> { ex.Message }));
+                return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string> { "INTERNAL_ERROR" }));
             }
         }
 
@@ -78,9 +78,9 @@ namespace Doosii.API.Controllers
             {
                 return StatusCode(ex.StatusCode, ApiResponse.Fail(ex.Message, new List<string> { ex.ErrorCode }));
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string> { ex.Message }));
+                return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string> { "INTERNAL_ERROR" }));
             }
         }
 
@@ -99,9 +99,9 @@ namespace Doosii.API.Controllers
             {
                 return StatusCode(ex.StatusCode, ApiResponse.Fail(ex.Message, new List<string> { ex.ErrorCode }));
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string> { ex.Message }));
+                return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string> { "INTERNAL_ERROR" }));
             }
         }
 
@@ -129,12 +129,30 @@ namespace Doosii.API.Controllers
             {
                 return StatusCode(ex.StatusCode, ApiResponse.Fail(ex.Message, new List<string> { ex.ErrorCode }));
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string> { ex.Message }));
+                return StatusCode(500, ApiResponse.Fail("An unexpected error occurred", new List<string> { "INTERNAL_ERROR" }));
             }
         }
 
+        [HttpGet("mine")]
+        [Authorize]
+        public async Task<IActionResult> Mine(int storeId, [FromQuery] int? orderId = null)
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null) return Unauthorized(ApiResponse.Fail("Token không hợp lệ."));
+            try { return Ok(ApiResponse.Ok(await _reviewService.GetMyReviewAsync(userId.Value, storeId, orderId))); }
+            catch (ServiceException ex) { return StatusCode(ex.StatusCode, ApiResponse.Fail(ex.Message, new List<string> { ex.ErrorCode })); }
+        }
+        [HttpGet("~/api/orders/{orderId:int}/review-context")]
+        [Authorize]
+        public async Task<IActionResult> OrderContext(int orderId)
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null) return Unauthorized(ApiResponse.Fail("Token không hợp lệ."));
+            try { return Ok(ApiResponse.Ok(await _reviewService.GetOrderReviewShopsAsync(userId.Value, orderId))); }
+            catch (ServiceException ex) { return StatusCode(ex.StatusCode, ApiResponse.Fail(ex.Message, new List<string> { ex.ErrorCode })); }
+        }
         private int? GetCurrentUserId()
         {
             var claim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -146,3 +164,4 @@ namespace Doosii.API.Controllers
             ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
     }
 }
+

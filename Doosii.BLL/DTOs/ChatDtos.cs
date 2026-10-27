@@ -16,6 +16,7 @@ namespace Doosii.BLL.DTOs
 
     public class SendMessageRequest
     {
+        public Guid? ClientRequestId { get; set; }
         [Required(ErrorMessage = "Content is required")]
         [MaxLength(2000, ErrorMessage = "Content cannot exceed 2000 characters")]
         public string Content { get; set; } = string.Empty;
@@ -23,12 +24,16 @@ namespace Doosii.BLL.DTOs
 
     public class SendProductCardRequest
     {
+        public Guid? ClientRequestId { get; set; }
         [Required(ErrorMessage = "ProductId is required")]
         public int ProductId { get; set; }
     }
 
     public class GetMessagesQuery
     {
+        public bool LatestFirst { get; set; }
+        public int? BeforeId { get; set; }
+        public int? AfterId { get; set; }
         public int Page { get; set; } = 1;
         public int PageSize { get; set; } = 30;
     }
@@ -45,10 +50,13 @@ namespace Doosii.BLL.DTOs
 
     public class ConversationDto
     {
+        public List<ReadStatusDto> ReadStatuses { get; set; } = new();
         public int Id { get; set; }
         public int BuyerId { get; set; }
         public int SellerId { get; set; }
         public int? ProductId { get; set; }
+        public int? StoreId { get; set; }
+        public string StoreName { get; set; } = "";
         public bool IsClosed { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime LastMessageAt { get; set; }
@@ -64,6 +72,7 @@ namespace Doosii.BLL.DTOs
 
     public class ChatMessageDto
     {
+        public Guid? ClientRequestId { get; set; }
         public int Id { get; set; }
         public int ConversationId { get; set; }
         public int SenderId { get; set; }
@@ -82,6 +91,7 @@ namespace Doosii.BLL.DTOs
 
     public class ProductCardDto
     {
+        public bool IsPublic { get; set; }
         public int ProductId { get; set; }
         public string Title { get; set; } = string.Empty;
         public decimal Price { get; set; }
@@ -93,6 +103,8 @@ namespace Doosii.BLL.DTOs
 
     public class ReadStatusDto
     {
+        public int ReaderId { get; set; }
+        public int UpToId { get; set; }
         public int ConversationId { get; set; }
         public int UnreadCount { get; set; }
         public int MarkedCount { get; set; }
@@ -105,3 +117,6 @@ namespace Doosii.BLL.DTOs
         public bool IsTyping { get; set; }
     }
 }
+
+namespace Doosii.BLL.DTOs { public class ChatMessagesPageDto : PagedResult<ChatMessageDto> { public bool HasMore { get; set; } } }
+

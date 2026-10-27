@@ -27,6 +27,7 @@ namespace Doosii.DAL.Models.Order
         [Column(TypeName = "decimal(18,2)")]
         public decimal Amount { get; set; }
 
+        [MaxLength(30)] public string ProcessingStatus { get; set; } = "APPLIED";
         public string? RawPayload { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

@@ -1,4 +1,4 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Doosii.BLL.DTOs;
@@ -16,6 +16,47 @@ namespace Doosii.API.Controllers
         public ProductsController(IProductService productService)
         {
             _productService = productService;
+        }
+
+        [HttpGet]
+        [AllowAnonymous]
+        public async Task<IActionResult> Catalog([FromQuery] ProductCatalogQuery query, CancellationToken cancellationToken)
+        {
+            var errors = query.Validate();
+            if (errors.Count > 0) return BadRequest(ApiResponse.Fail("Bộ lọc sản phẩm không hợp lệ.", errors));
+            return Ok(ApiResponse.Ok(await _productService.GetCatalogAsync(query, cancellationToken), "Lấy danh sách sản phẩm thành công."));
+        }
+        [HttpGet("mine")]
+        public async Task<IActionResult> Mine([FromQuery] int page = 1, [FromQuery] int pageSize = 12, [FromQuery] string? state = null)
+        {
+            if (page < 1 || pageSize < 1 || pageSize > 24 || (state != null && !new[] { "AVAILABLE", "HIDDEN", "LOCKED", "SOLD" }.Contains(state))) return BadRequest(ApiResponse.Fail("Bộ lọc hoặc phân trang không hợp lệ."));
+            var id = GetCurrentUserId(); if (id == null) return Unauthorized(ApiResponse.Fail("Token không hợp lệ."));
+            return Ok(ApiResponse.Ok(await _productService.GetMyProductsAsync(id.Value, page, pageSize, state)));
+        }
+        [HttpGet("{productId:int}/manage")]
+        public async Task<IActionResult> Manage(int productId)
+        {
+            var id = GetCurrentUserId(); if (id == null) return Unauthorized(ApiResponse.Fail("Token không hợp lệ."));
+            try { return Ok(ApiResponse.Ok(await _productService.GetManagedProductAsync(id.Value, productId))); }
+            catch (KeyNotFoundException ex) { return NotFound(ApiResponse.Fail(ex.Message)); }
+            catch (UnauthorizedAccessException ex) { return StatusCode(403, ApiResponse.Fail(ex.Message)); }
+        }
+        [HttpPatch("{productId:int}/publication")]
+        public async Task<IActionResult> Publication(int productId, [FromBody] ProductPublicationRequest request)
+        {
+            var id = GetCurrentUserId(); if (id == null) return Unauthorized(ApiResponse.Fail("Token không hợp lệ."));
+            try { return Ok(ApiResponse.Ok(await _productService.SetPublicationAsync(id.Value, productId, request))); }
+            catch (KeyNotFoundException ex) { return NotFound(ApiResponse.Fail(ex.Message)); }
+            catch (UnauthorizedAccessException ex) { return StatusCode(403, ApiResponse.Fail(ex.Message)); }
+            catch (InvalidOperationException ex) { return Conflict(ApiResponse.Fail(ex.Message)); }
+        }
+
+        [HttpGet("categories")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetCategories()
+        {
+            var result = await _productService.GetCategoriesAsync();
+            return Ok(ApiResponse.Ok(result, "Lấy danh mục sản phẩm thành công."));
         }
 
         /// <summary>
@@ -70,7 +111,7 @@ namespace Doosii.API.Controllers
             }
             catch (KeyNotFoundException ex) { return NotFound(ApiResponse.Fail(ex.Message)); }
             catch (UnauthorizedAccessException ex) { return StatusCode(403, ApiResponse.Fail(ex.Message)); }
-            catch (InvalidOperationException ex) { return BadRequest(ApiResponse.Fail(ex.Message)); }
+            catch (InvalidOperationException ex) { return Conflict(ApiResponse.Fail(ex.Message)); }
             catch (ArgumentException ex) { return BadRequest(ApiResponse.Fail(ex.Message)); }
         }
 
@@ -91,7 +132,7 @@ namespace Doosii.API.Controllers
             }
             catch (KeyNotFoundException ex) { return NotFound(ApiResponse.Fail(ex.Message)); }
             catch (UnauthorizedAccessException ex) { return StatusCode(403, ApiResponse.Fail(ex.Message)); }
-            catch (InvalidOperationException ex) { return BadRequest(ApiResponse.Fail(ex.Message)); }
+            catch (InvalidOperationException ex) { return Conflict(ApiResponse.Fail(ex.Message)); }
         }
 
         private int? GetCurrentUserId()
@@ -105,3 +146,4 @@ namespace Doosii.API.Controllers
             ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).ToList();
     }
 }
+

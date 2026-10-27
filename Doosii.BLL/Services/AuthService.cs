@@ -1,4 +1,4 @@
-﻿using System.IdentityModel.Tokens.Jwt;
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
@@ -39,7 +39,7 @@ namespace Doosii.BLL.Services
                 Email = request.Email.Trim(),
                 FullName = request.FullName.Trim(),
                 PasswordHash = passwordHash,
-                Role = "Customer",
+                Role = "CasualUser",
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -121,7 +121,7 @@ namespace Doosii.BLL.Services
                     Email = email,
                     FullName = fullName,
                     PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString("N")),
-                    Role = "Customer",
+                    Role = "CasualUser",
                     IsGoogle = true,
                     CreatedAt = DateTime.UtcNow
                 };
@@ -189,12 +189,18 @@ namespace Doosii.BLL.Services
 
         public async Task ForgotPasswordAsync(string email)
         {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == email.ToLower());
+            email = email.Trim().ToLowerInvariant();
+            await using var transaction = await _context.Database.BeginTransactionAsync();
+            var user = await _context.Users.FromSqlInterpolated($"SELECT * FROM [auth].[Users] WITH (UPDLOCK, HOLDLOCK) WHERE LOWER([Email]) = {email}").FirstOrDefaultAsync();
             if (user == null)
             {
                 // Return silently for security (avoid email enumeration attacks)
                 return;
             }
+
+            // Resend cooldown is also enforced on the server, including direct API calls.
+            var since = DateTime.UtcNow.AddSeconds(-60);
+            if (await _context.EmailOtps.AnyAsync(o => o.Email.ToLower() == email && o.Purpose == "ForgotPassword" && o.CreatedAt > since)) return;
 
             // Invalidate any previous unused OTPs for this email and purpose
             var existingOtps = await _context.EmailOtps
@@ -207,7 +213,7 @@ namespace Doosii.BLL.Services
             }
 
             // Generate cryptographically secure 6-digit OTP
-            var otpCode = Random.Shared.Next(100000, 999999).ToString();
+            var otpCode = System.Security.Cryptography.RandomNumberGenerator.GetInt32(100000, 1000000).ToString();
 
             var newOtp = new EmailOtp
             {
@@ -224,14 +230,15 @@ namespace Doosii.BLL.Services
 
             // Send via email service
             await _emailService.SendOtpEmailAsync(user.Email, otpCode, "ForgotPassword");
+            await transaction.CommitAsync();
         }
 
         public async Task<bool> VerifyOtpAsync(VerifyOtpRequest request)
         {
             var otp = await _context.EmailOtps
-                .Where(o => o.Email.ToLower() == request.Email.ToLower() 
+                .Where(o => o.Email.ToLower() == request.Email.Trim().ToLower() 
                          && o.OtpCode == request.OtpCode 
-                         && o.Purpose == request.Purpose 
+                         && o.Purpose == "ForgotPassword" 
                          && !o.IsUsed)
                 .OrderByDescending(o => o.CreatedAt)
                 .FirstOrDefaultAsync();
@@ -246,8 +253,11 @@ namespace Doosii.BLL.Services
 
         public async Task ResetPasswordAsync(ResetPasswordRequest request)
         {
+            if (request.NewPassword.Length < 8 || Encoding.UTF8.GetByteCount(request.NewPassword) > 72 || request.NewPassword != request.ConfirmPassword)
+                throw new InvalidOperationException("Mật khẩu mới cần ít nhất 8 ký tự, tối đa 72 byte và xác nhận trùng khớp.");
+            await using var transaction = await _context.Database.BeginTransactionAsync();
             var otp = await _context.EmailOtps
-                .Where(o => o.Email.ToLower() == request.Email.ToLower() 
+                .Where(o => o.Email.ToLower() == request.Email.Trim().ToLower() 
                          && o.OtpCode == request.OtpCode 
                          && o.Purpose == "ForgotPassword" 
                          && !o.IsUsed)
@@ -259,14 +269,16 @@ namespace Doosii.BLL.Services
                 throw new InvalidOperationException("Mã OTP không chính xác hoặc đã hết hạn.");
             }
 
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == request.Email.ToLower());
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == request.Email.Trim().ToLower());
             if (user == null)
             {
                 throw new KeyNotFoundException("Không tìm thấy người dùng với email này.");
             }
 
-            // Mark OTP as used
-            otp.IsUsed = true;
+            // A conditional update makes one OTP usable once even for concurrent resets.
+            var claimed = await _context.EmailOtps.Where(o => o.Id == otp.Id && !o.IsUsed && o.ExpiresAt > DateTime.UtcNow)
+                .ExecuteUpdateAsync(update => update.SetProperty(o => o.IsUsed, true));
+            if (claimed != 1) throw new InvalidOperationException("Mã OTP không chính xác hoặc đã hết hạn.");
 
             // Update user's password
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
@@ -283,6 +295,7 @@ namespace Doosii.BLL.Services
             }
 
             await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
         }
 
         private async Task<RefreshToken> GenerateAndSaveRefreshTokenAsync(int userId)
@@ -344,6 +357,8 @@ namespace Doosii.BLL.Services
                 Email = user.Email,
                 FullName = user.FullName,
                 Role = user.Role,
+                AvatarUrl = user.AvatarUrl,
+                Status = user.Role == "Banned" ? "banned" : "active",
                 IsGoogle = user.IsGoogle,
                 CreatedAt = user.CreatedAt
             };
