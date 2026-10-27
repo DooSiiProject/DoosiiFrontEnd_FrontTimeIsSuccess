@@ -8,6 +8,11 @@ internal static class CommunityModelConfiguration
 {
     internal static void Configure(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<CommunityMediaCleanup>(e =>
+        {
+            e.HasIndex(m => m.DeleteAfter);
+            e.ToTable("CommunityMediaCleanup", "forum", t => t.HasCheckConstraint("CK_CommunityMediaCleanup_Type", "[MediaType] IN ('IMAGE','VIDEO')"));
+        });
         // Retained CLR types only allow old services to compile until B3/B4.
         // Legacy HTTP endpoints are gated; none of these types has a table mapping.
         modelBuilder.Ignore<PassPost>();

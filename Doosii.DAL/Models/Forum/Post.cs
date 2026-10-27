@@ -13,6 +13,8 @@ public class Post
     [Required, MaxLength(5000)] public string PostDescription { get; set; } = string.Empty;
     [Required, MaxLength(20)] public string VisibilityStatus { get; set; } = "ACTIVE";
     public Guid ClientRequestId { get; set; }
+    [MaxLength(64)] public string? RequestHash { get; set; }
+    public bool HiddenByAdmin { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
     [Timestamp] public byte[] RowVersion { get; set; } = Array.Empty<byte>();

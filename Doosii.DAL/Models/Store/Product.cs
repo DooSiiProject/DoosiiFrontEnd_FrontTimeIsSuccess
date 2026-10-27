@@ -56,6 +56,7 @@ namespace Doosii.DAL.Models.Store
         public string? DetailsJson { get; set; }
         public bool IsPublished { get; set; } = true;
         public int? ReservedOrderId { get; set; }
+        public int? ReservedPickupReservationId { get; set; }
         public Guid? ClientRequestId { get; set; }
         public int? ProductGroupId { get; set; }
         public int? GroupPosition { get; set; }

@@ -79,6 +79,8 @@ namespace Doosii.BLL.Services
             var product = await GetForWrite(productId);
             EnsureOwner(product.Store, userId); EnsureEditable(product);
             if (product.ProductGroupId != null) throw new InvalidOperationException("Hãy gỡ món khỏi bài gộp trước khi xóa sản phẩm.");
+            if (await _context.PostMedia.AnyAsync(m => m.ProductId == productId))
+                throw new InvalidOperationException("Sản phẩm đang được nhắc trong bài cộng đồng. Hãy ẩn sản phẩm thay vì xóa để giữ liên kết và lịch sử.");
             _context.Products.Remove(product); await Doosii.DAL.Data.UploadedImageGuard.SaveChangesAsync(_context); await tx.CommitAsync();
         }
         public async Task<ProductDto> GetManagedProductAsync(int userId, int productId)

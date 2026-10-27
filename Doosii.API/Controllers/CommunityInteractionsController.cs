@@ -10,9 +10,8 @@ using Doosii.BLL.Interfaces;
 namespace Doosii.API.Controllers;
 
 [CommunityValidation]
-    [ApiController, Route("api/forum"), ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-[LegacyCommunityUnavailable]
-    public class CommunityInteractionsController(ICommunityInteractionService service, IPostReportService reports, ILogger<CommunityInteractionsController> logger) : ControllerBase
+[ApiController, Route("api/forum"), ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+public class CommunityInteractionsController(ICommunityInteractionService service, IPostReportService reports, ILogger<CommunityInteractionsController> logger) : ControllerBase
 {
     private int? Viewer => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : null;
     private int Actor => Viewer ?? throw new ServiceException(401, "Vui long dang nhap.", "UNAUTHORIZED");
@@ -46,7 +45,7 @@ namespace Doosii.API.Controllers;
     { await service.DeleteCommentAsync(postType, postId, commentId, Actor); return true; });
     [HttpPost("posts/{postType}/{postId:int}/reports"), Authorize]
     public Task<IActionResult> Report(string postType, int postId, [FromBody] CommunityReportRequest request) => Execute(() => reports.CreateReportAsync(postId, Actor,
-        new CreatePostReportRequest { PostType = postType, Reason = request.Reason, Description = request.Description }), 201);
+        new CreatePostReportRequest { PostType = postType, Reason = request.Reason, Description = request.Description, EvidenceUrls = request.EvidenceUrls }), 201);
     [HttpGet("moderation/reports"), Authorize(Roles = "Admin")]
     public Task<IActionResult> Queue([FromQuery] PostReportQuery query) => Execute(async () =>
     { await service.EnsureAdminAsync(Actor); return await reports.GetReportsQueueAsync(query); });

@@ -34,6 +34,7 @@ namespace Doosii.DAL.Data
         public DbSet<StoreReview> StoreReviews { get; set; }
 
         public DbSet<Post> Posts { get; set; }
+        public DbSet<CommunityMediaCleanup> CommunityMediaCleanup { get; set; }
         public DbSet<PassPostInfo> PassPostInfos { get; set; }
         public DbSet<PostMedia> PostMedia { get; set; }
 
@@ -52,6 +53,7 @@ namespace Doosii.DAL.Data
 
         // Order & Escrow Module (Track 2 - Wee)
         public DbSet<Order> Orders { get; set; }
+        public DbSet<PickupReservation> PickupReservations { get; set; }
         public DbSet<OrderItem> OrderItems { get; set; }
         public DbSet<EscrowTransaction> EscrowTransactions { get; set; }
         public DbSet<PaymentLog> PaymentLogs { get; set; }
@@ -64,6 +66,7 @@ namespace Doosii.DAL.Data
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+            PickupModelConfiguration.Configure(modelBuilder);
             modelBuilder.Entity<UploadedImage>(e => {
                 e.HasIndex(i => i.PublicId).IsUnique();
                 e.HasIndex(i => new { i.OwnerId, i.CreatedAt });

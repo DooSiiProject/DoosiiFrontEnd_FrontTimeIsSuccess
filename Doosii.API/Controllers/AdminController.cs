@@ -285,7 +285,6 @@ namespace Doosii.API.Controllers
         /// GET /api/admin/reports
         /// </summary>
         [HttpGet("reports")]
-        [LegacyCommunityUnavailable]
         public async Task<IActionResult> GetReportsQueue([FromQuery] PostReportQuery query)
         {
             try
@@ -311,7 +310,6 @@ namespace Doosii.API.Controllers
         /// PUT /api/admin/reports/{reportId}/resolve
         /// </summary>
         [HttpPut("reports/{reportId:int}/resolve")]
-        [LegacyCommunityUnavailable]
         public async Task<IActionResult> ResolveReport(int reportId, [FromBody] ResolvePostReportRequest request)
         {
             if (!ModelState.IsValid)

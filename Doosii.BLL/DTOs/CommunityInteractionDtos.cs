@@ -39,6 +39,7 @@ public class CommunityCommentPage
 }
 public class CommunityModerationPost
 {
+    public List<CommunityMediaDto> Media { get; set; } = new();
     public int ReportId { get; set; }
     public int PostId { get; set; }
     public string PostType { get; set; } = "";
@@ -53,6 +54,7 @@ public class CommunityModerationPost
 
 public class CommunityReportRequest
 {
+    public List<string>? EvidenceUrls { get; set; }
     [Required, MaxLength(30)] public string Reason { get; set; } = "";
     [MaxLength(1000)] public string? Description { get; set; }
 }

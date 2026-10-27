@@ -1,508 +1,100 @@
-using System.Text.Json;
 using System.Data;
-using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 using Doosii.BLL.DTOs;
 using Doosii.BLL.Exceptions;
 using Doosii.BLL.Interfaces;
 using Doosii.DAL.Data;
 using Doosii.DAL.Models.Forum;
+using Microsoft.EntityFrameworkCore;
 
-namespace Doosii.BLL.Services
+namespace Doosii.BLL.Services;
+
+public class PostReportService(AppDbContext db) : IPostReportService
 {
-    public class PostReportService : IPostReportService
+    private static readonly string[] Reasons = { "SCAM", "COUNTERFEIT", "OFFENSIVE", "PROHIBITED_CONTENT", "OTHER" };
+    public async Task<PostReportResponseDto> CreateReportAsync(int postId, int reporterId, CreatePostReportRequest request)
     {
-        private readonly AppDbContext _context;
-
-        private static readonly HashSet<string> ValidReasons = new(StringComparer.OrdinalIgnoreCase)
+        var reason = (request.Reason ?? "").Trim().ToUpperInvariant();
+        if (!Reasons.Contains(reason) || request.Description?.Length > 1000) throw new ServiceException(400, "Báo cáo không hợp lệ.", "INVALID_REPORT_REASON");
+        var evidence = request.EvidenceUrls ?? new();
+        if (evidence.Count > 5 || evidence.Any(u => string.IsNullOrWhiteSpace(u) || u.Length > 1000 || !Uri.TryCreate(u, UriKind.Absolute, out var uri) || uri.Scheme is not ("https" or "http")))
+            throw new ServiceException(400, "Bằng chứng không hợp lệ.", "INVALID_REPORT_EVIDENCE");
+        var evidenceJson = evidence.Count == 0 ? null : JsonSerializer.Serialize(evidence);
+        if (evidenceJson?.Length > 3000) throw new ServiceException(400, "Bằng chứng quá dài.", "INVALID_REPORT_EVIDENCE");
+        await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        await CommunityAccess.LockAsync(db, $"community:post:{postId}");
+        await CommunityAccess.ActorAsync(db, reporterId);
+        var post = await CommunityAccess.PublicPosts(db).SingleOrDefaultAsync(p => p.Id == postId) ?? throw new ServiceException(404, "Không tìm thấy bài viết công khai.", "POST_NOT_FOUND");
+        var requested = request.PostType?.Trim().ToUpperInvariant(); if (requested == "SPOT") requested = "OTHER";
+        if (!string.IsNullOrEmpty(requested) && requested != post.Type) throw new ServiceException(404, "Loại bài không khớp.", "POST_NOT_FOUND");
+        if (post.AuthorId == reporterId) throw new ServiceException(400, "Không được báo cáo bài của mình.", "CANNOT_REPORT_OWN_POST");
+        if (await db.PostReports.AnyAsync(r => r.PostId == postId && r.ReporterId == reporterId && r.Status == "PENDING")) throw new ServiceException(409, "Đã có báo cáo đang chờ xử lý.", "REPORT_ALREADY_PENDING");
+        var report = new PostReport { PostId = postId, ReporterId = reporterId, Reason = reason, Description = request.Description?.Trim(), EvidenceUrlsJson = evidenceJson };
+        db.PostReports.Add(report); await db.SaveChangesAsync(); await tx.CommitAsync(); return await MapAsync(report.Id);
+    }
+    public async Task<PagedResult<PostReportResponseDto>> GetReportsQueueAsync(PostReportQuery request)
+    {
+        CommunityAccess.Pagination(request.Page, request.PageSize);
+        var query = db.PostReports.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(request.Status))
         {
-            "SCAM",
-            "COUNTERFEIT",
-            "OFFENSIVE",
-            "PROHIBITED_CONTENT",
-            "OTHER"
-        };
-
-        private static readonly HashSet<string> ValidActions = new(StringComparer.OrdinalIgnoreCase)
-        {
-            "DISMISS",
-            "HIDE_POST"
-        };
-
-        public PostReportService(AppDbContext context)
-        {
-            _context = context;
+            var status = request.Status.Trim().ToUpperInvariant();
+            if (!new[] { "PENDING", "REVIEWED", "DISMISSED", "ACTION_TAKEN" }.Contains(status)) throw new ServiceException(400, "Trạng thái báo cáo không hợp lệ.", "INVALID_REPORT_STATUS");
+            query = query.Where(r => r.Status == status);
         }
-
-        public async Task<PostReportResponseDto> CreateReportAsync(int postId, int reporterId, CreatePostReportRequest request)
+        if (!string.IsNullOrWhiteSpace(request.Reason))
         {
-            var actor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == reporterId)
-                ?? throw new ServiceException(401, "Vui long dang nhap.", "UNAUTHORIZED");
-            if (actor.Role == "Banned") throw new ServiceException(403, "Tai khoan da bi khoa.", "USER_BANNED");
-            if (string.IsNullOrWhiteSpace(request.PostType))
-            {
-                throw new ServiceException(400, "PostType is required", "POST_NOT_FOUND");
-            }
-
-            var postType = request.PostType.Trim().ToUpperInvariant();
-            if (postType != "PASS" && postType != "SPOT")
-            {
-                throw new ServiceException(400, "Invalid post type. Must be PASS or SPOT", "POST_NOT_FOUND");
-            }
-
-            if (string.IsNullOrWhiteSpace(request.Reason))
-            {
-                throw new ServiceException(400, "Reason is required", "INVALID_REPORT_REASON");
-            }
-
             var reason = request.Reason.Trim().ToUpperInvariant();
-            if (!ValidReasons.Contains(reason))
-            {
-                throw new ServiceException(400, "Invalid report reason. Allowed: SCAM, COUNTERFEIT, OFFENSIVE, PROHIBITED_CONTENT, OTHER", "INVALID_REPORT_REASON");
-            }
-
-            if (request.Description?.Length > 1000)
-            {
-                throw new ServiceException(400, "Description cannot exceed 1000 characters", "INVALID_REPORT_REASON");
-            }
-
-            List<string>? cleanedEvidenceUrls = null;
-            if (request.EvidenceUrls != null && request.EvidenceUrls.Count > 0)
-            {
-                if (request.EvidenceUrls.Count > 5)
-                {
-                    throw new ServiceException(400, "Evidence URLs cannot exceed 5 items", "INVALID_REPORT_REASON");
-                }
-
-                cleanedEvidenceUrls = new List<string>();
-                foreach (var rawUrl in request.EvidenceUrls)
-                {
-                    var url = rawUrl?.Trim();
-                    if (string.IsNullOrWhiteSpace(url) ||
-                        !Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
-                        (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
-                    {
-                        throw new ServiceException(400, $"Invalid evidence URL format: {rawUrl}", "INVALID_REPORT_REASON");
-                    }
-                    cleanedEvidenceUrls.Add(url);
-                }
-            }
-
-            // Kiem tra bai viet ton tai va dang public/active
-            int postAuthorId = 0;
-            string postTitle = string.Empty;
-            string postStatus = string.Empty;
-            string authorName = string.Empty;
-
-            if (postType == "PASS")
-            {
-                var passPost = await _context.PassPosts
-                    .Include(p => p.Author)
-                    .FirstOrDefaultAsync(p => p.Id == postId);
-
-                if (passPost == null || passPost.Author.Role == "Banned" || !(new[] { "ACTIVE", "LOCKED", "SOLD" }).Contains(passPost.Status))
-                {
-                    throw new ServiceException(404, "Pass post not found or is hidden", "POST_NOT_FOUND");
-                }
-
-                if (passPost.AuthorId == reporterId)
-                {
-                    throw new ServiceException(400, "You cannot report your own post", "CANNOT_REPORT_OWN_POST");
-                }
-
-                postAuthorId = passPost.AuthorId;
-                postTitle = passPost.Title;
-                postStatus = passPost.Status;
-                authorName = passPost.Author?.FullName ?? "Unknown";
-            }
-            else // SPOT
-            {
-                var spotPost = await _context.SpotSharingPosts
-                    .Include(p => p.Author)
-                    .FirstOrDefaultAsync(p => p.Id == postId);
-
-                if (spotPost == null || spotPost.Author.Role == "Banned" || spotPost.Status != "ACTIVE")
-                {
-                    throw new ServiceException(404, "Spot sharing post not found or is hidden", "POST_NOT_FOUND");
-                }
-
-                if (spotPost.AuthorId == reporterId)
-                {
-                    throw new ServiceException(400, "You cannot report your own post", "CANNOT_REPORT_OWN_POST");
-                }
-
-                postAuthorId = spotPost.AuthorId;
-                postTitle = !string.IsNullOrEmpty(spotPost.LocationName)
-                    ? spotPost.LocationName
-                    : (spotPost.Content.Length > 50 ? spotPost.Content[..50] + "..." : spotPost.Content);
-                postStatus = spotPost.Status;
-                authorName = spotPost.Author?.FullName ?? "Unknown";
-            }
-
-            // Kiem tra duplicate report dang PENDING
-            var hasPending = await _context.PostReports.AnyAsync(r =>
-                r.PostId == postId &&
-                r.PostType == postType &&
-                r.ReporterId == reporterId &&
-                r.Status == "PENDING");
-
-            if (hasPending)
-            {
-                throw new ServiceException(409, "You have already reported this post", "REPORT_ALREADY_EXISTS");
-            }
-
-            var report = new PostReport
-            {
-                PostId = postId,
-                PostType = postType,
-                ReporterId = reporterId,
-                Reason = reason,
-                Description = request.Description?.Trim(),
-                EvidenceUrlsJson = cleanedEvidenceUrls != null && cleanedEvidenceUrls.Count > 0
-                    ? JsonSerializer.Serialize(cleanedEvidenceUrls)
-                    : null,
-                Status = "PENDING",
-                CreatedAt = DateTime.UtcNow
-            };
-
-            _context.PostReports.Add(report);
-            await Doosii.DAL.Data.UploadedImageGuard.SaveChangesAsync(_context);
-
-            var reporter = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == reporterId);
-
-            return new PostReportResponseDto
-            {
-                Id = report.Id,
-                PostId = report.PostId,
-                PostType = report.PostType,
-                Reason = report.Reason,
-                Description = report.Description,
-                EvidenceUrls = cleanedEvidenceUrls ?? new List<string>(),
-                Status = report.Status,
-                CreatedAt = report.CreatedAt,
-                ReviewedAt = report.ReviewedAt,
-                AdminNote = report.AdminNote,
-                Post = new PostSummaryDto
-                {
-                    Id = postId,
-                    PostType = postType,
-                    Title = postTitle,
-                    AuthorId = postAuthorId,
-                    AuthorName = authorName,
-                    Status = postStatus
-                },
-                Reporter = new UserSummaryDto
-                {
-                    Id = reporterId,
-                    FullName = reporter?.FullName ?? "Unknown",
-                    AvatarUrl = reporter?.AvatarUrl
-                },
-                ReviewedBy = null
-            };
+            if (!Reasons.Contains(reason)) throw new ServiceException(400, "Lý do không hợp lệ.", "INVALID_REPORT_REASON");
+            query = query.Where(r => r.Reason == reason);
         }
-
-        public async Task<PagedResult<PostReportResponseDto>> GetReportsQueueAsync(PostReportQuery query)
+        var total = await query.CountAsync();
+        var ids = await query.OrderByDescending(r => r.CreatedAt).ThenByDescending(r => r.Id).Skip((request.Page - 1) * request.PageSize).Take(request.PageSize).Select(r => r.Id).ToListAsync();
+        return new() { TotalCount = total, Page = request.Page, PageSize = request.PageSize, Items = await MapManyAsync(ids) };
+    }
+    public async Task<PostReportResponseDto> ResolveReportAsync(int reportId, int adminId, ResolvePostReportRequest request)
+    {
+        var action = (request.Action ?? "").Trim().ToUpperInvariant();
+        if (action is not ("DISMISS" or "HIDE_POST") || request.AdminNote?.Length > 2000) throw new ServiceException(400, "Chỉ hỗ trợ DISMISS hoặc HIDE_POST.", "INVALID_REPORT_ACTION");
+        var id = await db.PostReports.AsNoTracking().Where(r => r.Id == reportId).Select(r => (int?)r.PostId).SingleOrDefaultAsync()
+            ?? throw new ServiceException(404, "Không tìm thấy báo cáo.", "REPORT_NOT_FOUND");
+        await using (var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable))
         {
-            if (query.Page is < 1 or > 1000000 || query.PageSize is < 1 or > 50)
-                throw new ServiceException(400, "Phan trang khong hop le.", "INVALID_PAGINATION");
-            if (!string.IsNullOrWhiteSpace(query.Status) && !new[] { "PENDING", "REVIEWED", "DISMISSED", "ACTION_TAKEN" }.Contains(query.Status.Trim().ToUpperInvariant()))
-                throw new ServiceException(400, "Trang thai khong hop le.", "INVALID_REPORT_STATUS");
-            if (!string.IsNullOrWhiteSpace(query.Reason) && !ValidReasons.Contains(query.Reason.Trim()))
-                throw new ServiceException(400, "Ly do khong hop le.", "INVALID_REPORT_REASON");
-            var queryable = _context.PostReports.AsNoTracking();
-
-            // Status filter: mac dinh PENDING
-            var filterStatus = string.IsNullOrWhiteSpace(query.Status)
-                ? "PENDING"
-                : query.Status.Trim().ToUpperInvariant();
-
-            queryable = queryable.Where(r => r.Status == filterStatus);
-
-            // Reason filter
-            if (!string.IsNullOrWhiteSpace(query.Reason))
-            {
-                var filterReason = query.Reason.Trim().ToUpperInvariant();
-                queryable = queryable.Where(r => r.Reason == filterReason);
-            }
-
-            var totalCount = await queryable.CountAsync();
-
-            int page = query.Page < 1 ? 1 : query.Page;
-            int pageSize = query.PageSize < 1 ? 20 : (query.PageSize > 50 ? 50 : query.PageSize);
-
-            var reports = await queryable
-                .Include(r => r.Reporter)
-                .Include(r => r.ReviewedByAdmin)
-                .OrderByDescending(r => r.CreatedAt)
-                .ThenByDescending(r => r.Id)
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .ToListAsync();
-
-            // Lay thong tin post lien quan theo batch
-            var passPostIds = reports.Where(r => r.PostType == "PASS").Select(r => r.PostId).Distinct().ToList();
-            var spotPostIds = reports.Where(r => r.PostType == "SPOT").Select(r => r.PostId).Distinct().ToList();
-
-            var passPosts = await _context.PassPosts
-                .Include(p => p.Author)
-                .Where(p => passPostIds.Contains(p.Id))
-                .AsNoTracking()
-                .ToDictionaryAsync(p => p.Id);
-
-            var spotPosts = await _context.SpotSharingPosts
-                .Include(p => p.Author)
-                .Where(p => spotPostIds.Contains(p.Id))
-                .AsNoTracking()
-                .ToDictionaryAsync(p => p.Id);
-
-            var items = reports.Select(r =>
-            {
-                List<string> evidenceUrls = new();
-                if (!string.IsNullOrEmpty(r.EvidenceUrlsJson))
-                {
-                    try
-                    {
-                        evidenceUrls = JsonSerializer.Deserialize<List<string>>(r.EvidenceUrlsJson) ?? new();
-                    }
-                    catch
-                    {
-                        evidenceUrls = new();
-                    }
-                }
-
-                PostSummaryDto postSummary;
-                if (r.PostType == "PASS" && passPosts.TryGetValue(r.PostId, out var pass))
-                {
-                    postSummary = new PostSummaryDto
-                    {
-                        Id = pass.Id,
-                        PostType = "PASS",
-                        Title = pass.Title,
-                        AuthorId = pass.AuthorId,
-                        AuthorName = pass.Author?.FullName ?? "Unknown",
-                        Status = pass.Status
-                    };
-                }
-                else if (r.PostType == "SPOT" && spotPosts.TryGetValue(r.PostId, out var spot))
-                {
-                    postSummary = new PostSummaryDto
-                    {
-                        Id = spot.Id,
-                        PostType = "SPOT",
-                        Title = !string.IsNullOrEmpty(spot.LocationName)
-                            ? spot.LocationName
-                            : (spot.Content.Length > 50 ? spot.Content[..50] + "..." : spot.Content),
-                        AuthorId = spot.AuthorId,
-                        AuthorName = spot.Author?.FullName ?? "Unknown",
-                        Status = spot.Status
-                    };
-                }
-                else
-                {
-                    postSummary = new PostSummaryDto
-                    {
-                        Id = r.PostId,
-                        PostType = r.PostType,
-                        Title = "Post unavailable or removed",
-                        AuthorId = 0,
-                        AuthorName = "Unknown",
-                        Status = "DELETED"
-                    };
-                }
-
-                return new PostReportResponseDto
-                {
-                    Id = r.Id,
-                    PostId = r.PostId,
-                    PostType = r.PostType,
-                    Reason = r.Reason,
-                    Description = r.Description,
-                    EvidenceUrls = evidenceUrls,
-                    Status = r.Status,
-                    CreatedAt = r.CreatedAt,
-                    ReviewedAt = r.ReviewedAt,
-                    AdminNote = r.AdminNote,
-                    Post = postSummary,
-                    Reporter = new UserSummaryDto
-                    {
-                        Id = r.Reporter.Id,
-                        FullName = r.Reporter.FullName,
-                        AvatarUrl = r.Reporter.AvatarUrl
-                    },
-                    ReviewedBy = r.ReviewedByAdmin != null
-                        ? new UserSummaryDto
-                        {
-                            Id = r.ReviewedByAdmin.Id,
-                            FullName = r.ReviewedByAdmin.FullName,
-                            AvatarUrl = r.ReviewedByAdmin.AvatarUrl
-                        }
-                        : null
-                };
-            }).ToList();
-
-            return new PagedResult<PostReportResponseDto>
-            {
-                Items = items,
-                TotalCount = totalCount,
-                Page = page,
-                PageSize = pageSize
-            };
-        }
-
-        public async Task<PostReportResponseDto> ResolveReportAsync(int reportId, int adminId, ResolvePostReportRequest request)
-        {
-            var reviewer = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == adminId);
-            if (reviewer?.Role != "Admin") throw new ServiceException(403, "Khong co quyen quan tri.", "FORBIDDEN");
-            if (request.AdminNote?.Length > 2000) throw new ServiceException(400, "Ghi chu toi da 2000 ky tu.", "INVALID_ADMIN_NOTE");
-            await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
-            var report = await _context.PostReports
-                .Include(r => r.Reporter)
-                .FirstOrDefaultAsync(r => r.Id == reportId);
-
-            if (report == null)
-            {
-                throw new ServiceException(404, "Report not found", "REPORT_NOT_FOUND");
-            }
-
+            await CommunityAccess.LockAsync(db, $"community:post:{id}");
+            await CommunityAccess.ActorAsync(db, adminId, true);
+            var report = await db.PostReports.SingleAsync(r => r.Id == reportId);
+            var status = action == "DISMISS" ? "DISMISSED" : "ACTION_TAKEN";
             if (report.Status != "PENDING")
             {
-                throw new ServiceException(409, "Report has already been resolved", "REPORT_ALREADY_RESOLVED");
-            }
-
-            if (string.IsNullOrWhiteSpace(request.Action))
-            {
-                throw new ServiceException(400, "Action is required", "INVALID_MODERATION_ACTION");
-            }
-
-            var action = request.Action.Trim().ToUpperInvariant();
-            if (!ValidActions.Contains(action))
-            {
-                throw new ServiceException(400, "Chi chap nhan DISMISS hoac HIDE_POST", "INVALID_MODERATION_ACTION");
-            }
-
-            // Su dung transaction theo yeu cau
-
-            try
-            {
-                if (action == "DISMISS")
-                {
-                    report.Status = "DISMISSED";
-                }
-                else if (action == "HIDE_POST" || action == "DELETE_POST")
-                {
-                    if (report.PostType == "PASS")
-                    {
-                        var pass = await _context.PassPosts.FirstOrDefaultAsync(p => p.Id == report.PostId);
-                        if (pass != null)
-                        {
-                            pass.Status = "HIDDEN";
-                        }
-                    }
-                    else if (report.PostType == "SPOT")
-                    {
-                        var spot = await _context.SpotSharingPosts.FirstOrDefaultAsync(p => p.Id == report.PostId);
-                        if (spot != null)
-                        {
-                            spot.Status = "HIDDEN";
-                        }
-                    }
-                    report.Status = "ACTION_TAKEN";
-                }
-                else if (action == "BAN_AUTHOR")
-                {
-                    // BAN_AUTHOR: User entity chua co cot IsBanned/Status trong thiet ke hien tai
-                    // Danh dau ACTION_TAKEN va ghi nhan TODO cho co che User Ban
-                    report.Status = "ACTION_TAKEN";
-                }
-
-                report.ReviewedByAdminId = adminId;
-                report.AdminNote = request.AdminNote?.Trim();
-                report.ReviewedAt = DateTime.UtcNow;
-
-                // TODO: Ghi AdminAuditLogs khi entity/table duoc cung cap tu module cua Wee.
-
-                await Doosii.DAL.Data.UploadedImageGuard.SaveChangesAsync(_context);
-                await transaction.CommitAsync();
-            }
-            catch
-            {
-                await transaction.RollbackAsync();
-                throw;
-            }
-
-            // Lay thong tin admin reviewer va post summary
-            var admin = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == adminId);
-
-            PostSummaryDto postSummary;
-            if (report.PostType == "PASS")
-            {
-                var pass = await _context.PassPosts.Include(p => p.Author).AsNoTracking().FirstOrDefaultAsync(p => p.Id == report.PostId);
-                postSummary = new PostSummaryDto
-                {
-                    Id = report.PostId,
-                    PostType = "PASS",
-                    Title = pass?.Title ?? "Deleted or unavailable",
-                    AuthorId = pass?.AuthorId ?? 0,
-                    AuthorName = pass?.Author?.FullName ?? "Unknown",
-                    Status = pass?.Status ?? "DELETED"
-                };
+                if (report.Status != status) throw new ServiceException(409, "Báo cáo đã được xử lý bằng hành động khác.", "REPORT_ALREADY_RESOLVED");
             }
             else
             {
-                var spot = await _context.SpotSharingPosts.Include(p => p.Author).AsNoTracking().FirstOrDefaultAsync(p => p.Id == report.PostId);
-                postSummary = new PostSummaryDto
+                if (action == "HIDE_POST")
                 {
-                    Id = report.PostId,
-                    PostType = "SPOT",
-                    Title = !string.IsNullOrEmpty(spot?.LocationName)
-                        ? spot.LocationName
-                        : (spot?.Content != null && spot.Content.Length > 50 ? spot.Content[..50] + "..." : spot?.Content ?? "Deleted or unavailable"),
-                    AuthorId = spot?.AuthorId ?? 0,
-                    AuthorName = spot?.Author?.FullName ?? "Unknown",
-                    Status = spot?.Status ?? "DELETED"
-                };
-            }
-
-            List<string> evidenceUrls = new();
-            if (!string.IsNullOrEmpty(report.EvidenceUrlsJson))
-            {
-                try
-                {
-                    evidenceUrls = JsonSerializer.Deserialize<List<string>>(report.EvidenceUrlsJson) ?? new();
+                    var post = await db.Posts.SingleAsync(p => p.Id == id);
+                    post.VisibilityStatus = "HIDDEN"; post.HiddenByAdmin = true; post.UpdatedAt = DateTime.UtcNow;
                 }
-                catch
-                {
-                    evidenceUrls = new();
-                }
+                report.Status = status; report.AdminNote = request.AdminNote?.Trim(); report.ReviewedByAdminId = adminId; report.ReviewedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync();
             }
-
-            return new PostReportResponseDto
-            {
-                Id = report.Id,
-                PostId = report.PostId,
-                PostType = report.PostType,
-                Reason = report.Reason,
-                Description = report.Description,
-                EvidenceUrls = evidenceUrls,
-                Status = report.Status,
-                CreatedAt = report.CreatedAt,
-                ReviewedAt = report.ReviewedAt,
-                AdminNote = report.AdminNote,
-                Post = postSummary,
-                Reporter = new UserSummaryDto
-                {
-                    Id = report.Reporter.Id,
-                    FullName = report.Reporter.FullName,
-                    AvatarUrl = report.Reporter.AvatarUrl
-                },
-                ReviewedBy = admin != null
-                    ? new UserSummaryDto
-                    {
-                        Id = admin.Id,
-                        FullName = admin.FullName,
-                        AvatarUrl = admin.AvatarUrl
-                    }
-                    : null
-            };
+            await tx.CommitAsync();
         }
+        return await MapAsync(reportId);
+    }
+    private async Task<PostReportResponseDto> MapAsync(int id) => (await MapManyAsync(new List<int> { id })).Single();
+    private async Task<List<PostReportResponseDto>> MapManyAsync(List<int> ids)
+    {
+        var reports = await db.PostReports.AsNoTracking().Include(r => r.Reporter).Include(r => r.ReviewedByAdmin).Where(r => ids.Contains(r.Id)).ToDictionaryAsync(r => r.Id);
+        var postIds = reports.Values.Select(r => r.PostId).Distinct().ToArray();
+        var posts = await db.Posts.AsNoTracking().Include(p => p.Author).Where(p => postIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
+        return ids.Select(id => { var r = reports[id]; var p = posts[r.PostId]; return new PostReportResponseDto {
+            Id = r.Id, PostId = r.PostId, PostType = p.Type, Reason = r.Reason, Description = r.Description,
+            EvidenceUrls = r.EvidenceUrlsJson == null ? new() : JsonSerializer.Deserialize<List<string>>(r.EvidenceUrlsJson) ?? new(),
+            Status = r.Status, CreatedAt = DateTime.SpecifyKind(r.CreatedAt, DateTimeKind.Utc), ReviewedAt = r.ReviewedAt.HasValue ? DateTime.SpecifyKind(r.ReviewedAt.Value, DateTimeKind.Utc) : null,
+            AdminNote = r.AdminNote, Reporter = new() { Id = r.ReporterId, FullName = r.Reporter.FullName, AvatarUrl = r.Reporter.AvatarUrl },
+            ReviewedBy = r.ReviewedByAdmin == null ? null : new() { Id = r.ReviewedByAdmin.Id, FullName = r.ReviewedByAdmin.FullName, AvatarUrl = r.ReviewedByAdmin.AvatarUrl },
+            Post = new() { Id = p.Id, PostType = p.Type, Title = p.Title, AuthorId = p.AuthorId, AuthorName = p.Author.FullName, Status = p.VisibilityStatus }
+        }; }).ToList();
     }
 }

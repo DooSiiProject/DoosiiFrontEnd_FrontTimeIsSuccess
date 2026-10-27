@@ -5,7 +5,7 @@ namespace Doosii.BLL.Interfaces
     public interface IPostReportService
     {
         /// <summary>
-        /// Nguoi dung gui bao cao vi pham cho mot bai viet (PassPost hoac SpotSharingPost).
+        /// Nguoi dung gui bao cao vi pham cho Post (PASS hoac OTHER).
         /// </summary>
         Task<PostReportResponseDto> CreateReportAsync(int postId, int reporterId, CreatePostReportRequest request);
 
@@ -15,7 +15,7 @@ namespace Doosii.BLL.Interfaces
         Task<PagedResult<PostReportResponseDto>> GetReportsQueueAsync(PostReportQuery query);
 
         /// <summary>
-        /// Admin xu ly bao cao (DISMISS, HIDE_POST, DELETE_POST, BAN_AUTHOR).
+        /// Admin xu ly bao cao (DISMISS, HIDE_POST).
         /// Su dung database transaction.
         /// </summary>
         Task<PostReportResponseDto> ResolveReportAsync(int reportId, int adminId, ResolvePostReportRequest request);

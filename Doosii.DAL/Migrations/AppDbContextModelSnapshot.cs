@@ -180,6 +180,33 @@ namespace Doosii.DAL.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Doosii.DAL.Models.Forum.CommunityMediaCleanup", b =>
+                {
+                    b.Property<string>("PublicId")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("DeleteAfter")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("MediaType")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.HasKey("PublicId");
+
+                    b.HasIndex("DeleteAfter");
+
+                    b.ToTable("CommunityMediaCleanup", "forum", t =>
+                        {
+                            t.HasCheckConstraint("CK_CommunityMediaCleanup_Type", "[MediaType] IN ('IMAGE','VIDEO')");
+                        });
+                });
+
             modelBuilder.Entity("Doosii.DAL.Models.Forum.Conversation", b =>
                 {
                     b.Property<int>("Id")
@@ -320,10 +347,17 @@ namespace Doosii.DAL.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<bool>("HiddenByAdmin")
+                        .HasColumnType("bit");
+
                     b.Property<string>("PostDescription")
                         .IsRequired()
                         .HasMaxLength(5000)
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RequestHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -971,6 +1005,179 @@ namespace Doosii.DAL.Migrations
                     b.ToTable("PaymentLogs");
                 });
 
+            modelBuilder.Entity("Doosii.DAL.Models.Order.PickupReservation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("AcceptedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("BuyerId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("BuyerNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<Guid>("ClientRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CloseReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("ClosedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("ClosedById")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("CodeLockedUntil")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ContactName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("ContactPhone")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("FailedCodeAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("PickupCodeHash")
+                        .HasMaxLength(32)
+                        .HasColumnType("varbinary(32)");
+
+                    b.Property<decimal>("PriceSnapshot")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProductTitleSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<byte[]>("ProductVersionSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("varbinary(8)");
+
+                    b.Property<string>("ProtectedPickupCode")
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime>("ResponseDeadline")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTime>("ScheduledAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("SellerId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("StoreAddressSnapshot")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<double?>("StoreLatitudeSnapshot")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("StoreLongitudeSnapshot")
+                        .HasColumnType("float");
+
+                    b.Property<string>("StoreNameSnapshot")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClosedById");
+
+                    b.HasIndex("ExpiresAt")
+                        .HasFilter("[Status] = 'ACCEPTED'");
+
+                    b.HasIndex("ProductId")
+                        .IsUnique()
+                        .HasFilter("[Status] = 'ACCEPTED'");
+
+                    b.HasIndex("ResponseDeadline")
+                        .HasFilter("[Status] = 'PENDING'");
+
+                    b.HasIndex("SellerId");
+
+                    b.HasIndex("BuyerId", "ClientRequestId")
+                        .IsUnique();
+
+                    b.HasIndex("BuyerId", "ProductId")
+                        .IsUnique()
+                        .HasFilter("[Status] IN ('PENDING','ACCEPTED')");
+
+                    b.HasIndex("ProductId", "StoreId");
+
+                    b.HasIndex("BuyerId", "Status", "CreatedAt", "Id");
+
+                    b.HasIndex("StoreId", "Status", "CreatedAt", "Id");
+
+                    b.ToTable("PickupReservations", "store", t =>
+                        {
+                            t.HasCheckConstraint("CK_Pickup_Acceptance", "([AcceptedAt] IS NULL AND [ExpiresAt] IS NULL AND [StoreNameSnapshot] IS NULL AND [StoreAddressSnapshot] IS NULL AND [PickupCodeHash] IS NULL AND [ProtectedPickupCode] IS NULL AND [Status] IN ('PENDING','REJECTED','CANCELLED','EXPIRED')) OR ([AcceptedAt] IS NOT NULL AND [AcceptedAt] >= [CreatedAt] AND [AcceptedAt] < [ResponseDeadline] AND [ExpiresAt] IS NOT NULL AND [ExpiresAt] = DATEADD(minute,30,[ScheduledAt]) AND [StoreNameSnapshot] IS NOT NULL AND LEN(LTRIM(RTRIM([StoreNameSnapshot]))) > 0 AND [StoreAddressSnapshot] IS NOT NULL AND LEN(LTRIM(RTRIM([StoreAddressSnapshot]))) > 0 AND [PickupCodeHash] IS NOT NULL AND DATALENGTH([PickupCodeHash]) = 32 AND [ProtectedPickupCode] IS NOT NULL AND LEN([ProtectedPickupCode]) > 0 AND [Status] IN ('ACCEPTED','CANCELLED','EXPIRED','COMPLETED'))");
+
+                            t.HasCheckConstraint("CK_Pickup_BuyerSeller", "[BuyerId] <> [SellerId]");
+
+                            t.HasCheckConstraint("CK_Pickup_Closure", "([Status] IN ('PENDING','ACCEPTED') AND [ClosedAt] IS NULL AND [ClosedById] IS NULL AND [CloseReason] IS NULL) OR ([Status] IN ('REJECTED','CANCELLED','EXPIRED','COMPLETED') AND [ClosedAt] IS NOT NULL AND [ClosedAt] >= [CreatedAt] AND ([AcceptedAt] IS NULL OR [ClosedAt] >= [AcceptedAt]) AND [CloseReason] IS NOT NULL AND LEN(LTRIM(RTRIM([CloseReason]))) > 0 AND (([Status] = 'EXPIRED' AND [ClosedById] IS NULL AND (([AcceptedAt] IS NULL AND [ClosedAt] >= [ResponseDeadline]) OR ([AcceptedAt] IS NOT NULL AND [ClosedAt] >= [ExpiresAt]))) OR ([Status] = 'COMPLETED' AND [ClosedById] IS NOT NULL AND [ClosedById] = [SellerId] AND [ClosedAt] < [ExpiresAt]) OR ([Status] = 'REJECTED' AND [ClosedById] IS NOT NULL AND [ClosedById] = [SellerId]) OR ([Status] = 'CANCELLED' AND [ClosedById] IS NOT NULL AND [ClosedById] IN ([BuyerId],[SellerId]))))");
+
+                            t.HasCheckConstraint("CK_Pickup_CodeAttempts", "[FailedCodeAttempts] BETWEEN 0 AND 5 AND ([CodeLockedUntil] IS NULL OR ([AcceptedAt] IS NOT NULL AND [CodeLockedUntil] >= [AcceptedAt]))");
+
+                            t.HasCheckConstraint("CK_Pickup_Coordinates", "([StoreLatitudeSnapshot] IS NULL AND [StoreLongitudeSnapshot] IS NULL) OR ([StoreLatitudeSnapshot] IS NOT NULL AND [StoreLongitudeSnapshot] IS NOT NULL AND [StoreLatitudeSnapshot] BETWEEN -90 AND 90 AND [StoreLongitudeSnapshot] BETWEEN -180 AND 180)");
+
+                            t.HasCheckConstraint("CK_Pickup_Request", "[ClientRequestId] <> '00000000-0000-0000-0000-000000000000' AND LEN([RequestHash]) = 64 AND [RequestHash] COLLATE Latin1_General_100_BIN2 NOT LIKE '%[^0-9a-f]%' AND DATALENGTH([ProductVersionSnapshot]) = 8");
+
+                            t.HasCheckConstraint("CK_Pickup_Schedule", "[ScheduledAt] >= DATEADD(minute,30,[CreatedAt]) AND [ScheduledAt] <= DATEADD(hour,24,[CreatedAt]) AND [ResponseDeadline] > [CreatedAt] AND [ResponseDeadline] <= [ScheduledAt] AND [ResponseDeadline] <= DATEADD(hour,2,[CreatedAt])");
+
+                            t.HasCheckConstraint("CK_Pickup_Status", "[Status] IN ('PENDING','ACCEPTED','REJECTED','CANCELLED','EXPIRED','COMPLETED')");
+
+                            t.HasCheckConstraint("CK_Pickup_TextPrice", "[PriceSnapshot] > 0 AND LEN(LTRIM(RTRIM([ContactName]))) > 0 AND LEN(LTRIM(RTRIM([ContactPhone]))) > 0 AND LEN(LTRIM(RTRIM([ProductTitleSnapshot]))) > 0");
+                        });
+                });
+
             modelBuilder.Entity("Doosii.DAL.Models.Order.WithdrawalRequest", b =>
                 {
                     b.Property<int>("Id")
@@ -1198,6 +1405,9 @@ namespace Doosii.DAL.Migrations
                     b.Property<int?>("ReservedOrderId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("ReservedPickupReservationId")
+                        .HasColumnType("int");
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -1236,6 +1446,8 @@ namespace Doosii.DAL.Migrations
 
                     b.HasIndex("ProductGroupId", "StoreId");
 
+                    b.HasIndex("ReservedPickupReservationId", "Id");
+
                     b.HasIndex("StoreId", "ClientRequestId")
                         .IsUnique()
                         .HasFilter("[ClientRequestId] IS NOT NULL");
@@ -1245,6 +1457,8 @@ namespace Doosii.DAL.Migrations
                     b.ToTable("Products", "store", t =>
                         {
                             t.HasCheckConstraint("CK_Products_GroupPosition", "([ProductGroupId] IS NULL AND [GroupPosition] IS NULL) OR ([ProductGroupId] IS NOT NULL AND [GroupPosition] IS NOT NULL AND [GroupPosition] >= 0)");
+
+                            t.HasCheckConstraint("CK_Products_ReservationOwner", "[ReservedPickupReservationId] IS NULL OR ([ReservedOrderId] IS NULL AND [Status] = 'LOCKED')");
                         });
                 });
 
@@ -1977,6 +2191,39 @@ namespace Doosii.DAL.Migrations
                     b.Navigation("Order");
                 });
 
+            modelBuilder.Entity("Doosii.DAL.Models.Order.PickupReservation", b =>
+                {
+                    b.HasOne("Doosii.DAL.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("BuyerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Doosii.DAL.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("ClosedById")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Doosii.DAL.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("SellerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Doosii.DAL.Models.Store.Store", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Doosii.DAL.Models.Store.Product", null)
+                        .WithMany()
+                        .HasForeignKey("ProductId", "StoreId")
+                        .HasPrincipalKey("Id", "StoreId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Doosii.DAL.Models.Order.WithdrawalRequest", b =>
                 {
                     b.HasOne("Doosii.DAL.Models.User", "User")
@@ -2036,6 +2283,12 @@ namespace Doosii.DAL.Migrations
                         .WithMany("Products")
                         .HasForeignKey("ProductGroupId", "StoreId")
                         .HasPrincipalKey("Id", "StoreId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Doosii.DAL.Models.Order.PickupReservation", null)
+                        .WithMany()
+                        .HasForeignKey("ReservedPickupReservationId", "Id")
+                        .HasPrincipalKey("Id", "ProductId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Category");

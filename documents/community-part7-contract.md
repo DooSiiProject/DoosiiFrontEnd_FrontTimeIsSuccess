@@ -1,7 +1,8 @@
 # Cộng đồng part 7 — hợp đồng dữ liệu và API
 
-Trạng thái: B1/B2 (schema và hợp đồng). API mô tả dưới đây là mục tiêu B3/B4,
-chưa phải endpoint đã triển khai. FE được chuyển đổi ở B5.
+Trạng thái: B1–B4 đã triển khai trong BE, bao gồm API `/api/community`.
+FE được chuyển đổi ở B5. Kết quả kiểm thử B3/B4 và hướng dẫn chạy nằm tại
+`community-part7-publishing.md`.
 
 ## Quyết định nghiệp vụ
 
@@ -59,12 +60,12 @@ Không cần bảng ánh xạ ID cũ vì dữ liệu cộng đồng trống.
 ### Ràng buộc tại service B3/B4
 
 DB không thể yêu cầu một parent vừa insert phải lập tức có child bằng FK thông
-thường. Tạo/sửa PASS phải ghi Post + PassInfo + media trong cùng transaction,
+thường. Tạo/sửa PASS ghi Post + PassInfo + media trong cùng transaction,
 kiểm tra đúng một PassInfo và ít nhất một ảnh trước commit. Quyền theo user,
 trạng thái công khai, số lượng media, số đo/tag hợp lệ và reply tối đa hai cấp
-được kiểm tra tại service. Không tuyên bố các quy tắc này đã chạy ở B1/B2.
+được kiểm tra tại service B3/B4 và đã có bộ kiểm thử HTTP/SQL.
 
-## Hợp đồng API mục tiêu
+## Hợp đồng API
 
 Base: `/api/community`. Response dùng ApiResponse hiện tại:
 `{ success, message, data, errors: ["ERROR_CODE"] }`.
@@ -77,7 +78,7 @@ Base: `/api/community`. Response dùng ApiResponse hiện tại:
 | PATCH | /posts/{id}/visibility | Tác giả ẩn bài; admin xử lý theo quyền kiểm duyệt |
 | PATCH | /posts/{id}/sale-status | Tác giả PASS đổi AVAILABLE/SOLD |
 | GET | /posts?tab=newest&page=1&pageSize=12 | Feed chung |
-| GET | /posts?tab=by-style&style=vintage | Lọc style của PASS |
+| GET | /posts?tab=by-style&style=90s-vintage | Lọc style của PASS |
 | GET | /posts?tab=near-you&latitude=10.77&longitude=106.70&radiusKm=5 | OTHER gắn shop trong bán kính |
 | GET | /posts?storeId=8&page=1&pageSize=12 | Bài OTHER nhắc shop, kể cả qua sản phẩm |
 | PUT / DELETE | /posts/{id}/reaction | Like/unlike idempotent |
@@ -114,7 +115,7 @@ BE xác minh file thực, không tin URL/publicId do client tự gửi.
     "size": "M",
     "conditionPercent": 90,
     "defects": "Sờn nhẹ cổ tay",
-    "styleTagIds": ["vintage"],
+    "styleTagIds": ["90s-vintage"],
     "measurements": [{ "name": "Vai", "unit": "cm", "value": 44 }]
   },
   "media": [
@@ -152,10 +153,10 @@ cùng nội dung trả bài đã tạo; payload khác cùng ID trả 409.
     "passInfo": {
       "productName": "Áo khoác denim xanh", "productDescription": null,
       "price": 250000, "size": "M", "conditionPercent": 90,
-      "defects": "Sờn nhẹ cổ tay", "styleTagIds": ["vintage"],
-      "measurements": [{ "name": "Vai", "unit": "cm", "value": 44 }],
-      "saleStatus": "AVAILABLE"
+      "defects": "Sờn nhẹ cổ tay", "styleTagIds": ["90s-vintage"],
+      "measurements": [{ "name": "Vai", "unit": "cm", "value": 44 }]
     },
+    "saleStatus": "AVAILABLE",
     "media": [{ "id": 501, "mediaType": "IMAGE", "sourceUrl": "https://media.example/denim.jpg", "thumbnailUrl": null, "caption": "Mặt trước", "displayOrder": 0, "store": null, "product": null, "attachmentUnavailable": false }],
     "summary": { "reactionCount": 0, "commentCount": 0, "likedByMe": false },
     "version": "AAAAAAAAAAE=",
@@ -174,8 +175,8 @@ Xung đột trả 409. Reorder unique index cần thực hiện hai bước vị
 transaction; không update hoán đổi trực tiếp gây unique violation.
 
 Visibility PATCH: `{ "visibilityStatus": "HIDDEN", "version": "..." }`.
-Tác giả không được tự mở lại bài đã bị admin ẩn; B3/B4 phải phân biệt nguồn ẩn
-qua lịch sử xử lý report hoặc bổ sung metadata trước khi hỗ trợ mở lại.
+Tác giả không được sửa/mở lại bài đã bị admin ẩn. `HiddenByAdmin` lưu nguồn ẩn;
+admin có thể mở lại bằng cùng endpoint, tác giả chỉ tự mở bài do mình ẩn.
 Sale PATCH: `{ "saleStatus": "SOLD", "version": "..." }`.
 
 ### Validation và mã lỗi
@@ -203,7 +204,7 @@ thất bại và chỉ xóa file cũ sau khi cập nhật DB thành công.
 | 409 | COMMUNITY_CONFLICT, CLIENT_REQUEST_CONFLICT, REPORT_ALREADY_PENDING |
 | 413 | MEDIA_TOO_LARGE |
 | 429 | PASS_DAILY_LIMIT |
-| 503 | COMMUNITY_UPGRADE_PENDING (chỉ giai đoạn chuyển đổi B1/B2) |
+| 503 | CLOUDINARY_NOT_CONFIGURED; COMMUNITY_UPGRADE_PENDING chỉ còn ở các route tạo/đọc/feed cũ |
 
 ## Chuyển đổi và xác minh
 
@@ -213,10 +214,10 @@ nếu bất kỳ bảng nội dung/tương tác cộng đồng cũ nào không t
 dữ liệu ngoài giả định người dùng đã xác nhận. Không sửa lịch sử migration cũ.
 
 Các CLR type/DbSet cũ và PostType CLR trên tương tác tạm giữ để service cũ
-compile, nhưng bị Ignore trong EF. Các controller cũ và action report admin
-trả 503 trước khi gọi service, đến khi được chuyển đổi ở B3/B4.
-Các phần khác của AdminController vẫn hoạt động. Không phát hành B1/B2 độc lập
-như phiên bản cộng đồng hoàn chỉnh. FE chưa thay đổi ở giai đoạn này.
+compile, nhưng bị Ignore trong EF. Tương tác và report admin đã chuyển sang
+schema mới và được mở lại. Các route tạo/đọc/feed PASS/SPOT cũ vẫn trả 503;
+FE cần chuyển sang `/api/community` ở B5. Chi tiết route và kết quả B3/B4 xem
+`community-part7-publishing.md`.
 
 Design-time factory cho phép tạo/script migration bằng DAL mà không khởi động
 API (API hiện tự migrate/seed khi chạy). Mặc định trỏ DB LocalDB thử nghiệm;
