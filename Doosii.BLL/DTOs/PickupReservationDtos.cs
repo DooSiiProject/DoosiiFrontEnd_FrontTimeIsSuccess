@@ -1,14 +1,19 @@
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 
 namespace Doosii.BLL.DTOs;
 
-// Target contract for B3/B4. No controller/service is registered in B1/B2.
+// B3/B4 contract; code is only returned through the private PickupCodeDto endpoint.
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public class CreatePickupReservationRequest : IValidatableObject
 {
     [Range(1, int.MaxValue)] public int ProductId { get; set; }
     public Guid ClientRequestId { get; set; }
     [Required] public string ProductVersion { get; set; } = "";
-    public DateTimeOffset ScheduledAt { get; set; }
+    [JsonConverter(typeof(PickupScheduledAtConverter))] public DateTimeOffset ScheduledAt { get; set; }
     [Required, MaxLength(256)] public string ContactName { get; set; } = "";
     [Required, Phone, MaxLength(20)] public string ContactPhone { get; set; } = "";
     [MaxLength(500)] public string? BuyerNote { get; set; }
@@ -20,6 +25,7 @@ public class CreatePickupReservationRequest : IValidatableObject
         // Relative time, quota, role and shop eligibility must use server time/DB in B3.
     }
 }
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public class PickupVersionRequest : IValidatableObject
 {
     [Required] public string Version { get; set; } = "";
@@ -28,10 +34,12 @@ public class PickupVersionRequest : IValidatableObject
         if (!PickupContractValidation.IsVersion(Version)) yield return new("Version lượt giữ không hợp lệ.", new[] { nameof(Version) });
     }
 }
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public class ClosePickupReservationRequest : PickupVersionRequest
 {
     [Required, MaxLength(500)] public string Reason { get; set; } = "";
 }
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public class CompletePickupReservationRequest : PickupVersionRequest
 {
     [Required, RegularExpression("^[0-9]{6}$")] public string PickupCode { get; set; } = "";
@@ -100,4 +108,16 @@ internal static class PickupContractValidation
         try { return value != null && Convert.FromBase64String(value).Length == 8; }
         catch (FormatException) { return false; }
     }
+}
+public sealed class PickupScheduledAtConverter : JsonConverter<DateTimeOffset>
+{
+    public override DateTimeOffset Read(ref Utf8JsonReader reader, Type type, JsonSerializerOptions options)
+    {
+        var value = reader.TokenType == JsonTokenType.String ? reader.GetString() : null;
+        if (value == null || value.Length > 40 || !Regex.IsMatch(value, @"^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$", RegexOptions.CultureInvariant) ||
+            !DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var result))
+            throw new JsonException("Thời gian cần ISO 8601 với múi giờ.");
+        return result;
+    }
+    public override void Write(Utf8JsonWriter writer, DateTimeOffset value, JsonSerializerOptions options) => writer.WriteStringValue(value);
 }

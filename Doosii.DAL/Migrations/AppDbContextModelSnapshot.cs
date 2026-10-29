@@ -728,6 +728,47 @@ namespace Doosii.DAL.Migrations
                     b.ToTable("Notifications", "notification");
                 });
 
+            modelBuilder.Entity("Doosii.DAL.Models.Notification.PickupNotificationOutbox", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("AvailableAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EventKey")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<int>("NotificationId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventKey")
+                        .IsUnique();
+
+                    b.HasIndex("NotificationId")
+                        .IsUnique();
+
+                    b.HasIndex("AvailableAt", "Id");
+
+                    b.ToTable("PickupNotificationOutbox", "notification", t =>
+                        {
+                            t.HasCheckConstraint("CK_PickupOutbox_Attempts", "[Attempts] >= 0");
+                        });
+                });
+
             modelBuilder.Entity("Doosii.DAL.Models.Order.Dispute", b =>
                 {
                     b.Property<int>("Id")
@@ -2118,6 +2159,17 @@ namespace Doosii.DAL.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Doosii.DAL.Models.Notification.PickupNotificationOutbox", b =>
+                {
+                    b.HasOne("Doosii.DAL.Models.Notification.Notification", "Notification")
+                        .WithMany()
+                        .HasForeignKey("NotificationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Notification");
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Order.Dispute", b =>

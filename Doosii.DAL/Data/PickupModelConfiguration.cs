@@ -1,5 +1,6 @@
 using Doosii.DAL.Models;
 using Doosii.DAL.Models.Order;
+using Doosii.DAL.Models.Notification;
 using Doosii.DAL.Models.Store;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,6 +10,14 @@ internal static class PickupModelConfiguration
 {
     internal static void Configure(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<PickupNotificationOutbox>(e =>
+        {
+            e.HasOne(o => o.Notification).WithMany().HasForeignKey(o => o.NotificationId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(o => o.NotificationId).IsUnique();
+            e.HasIndex(o => o.EventKey).IsUnique();
+            e.HasIndex(o => new { o.AvailableAt, o.Id });
+            e.ToTable("PickupNotificationOutbox", "notification", t => t.HasCheckConstraint("CK_PickupOutbox_Attempts", "[Attempts] >= 0"));
+        });
         modelBuilder.Entity<PickupReservation>(e =>
         {
             e.HasAlternateKey(r => new { r.Id, r.ProductId });

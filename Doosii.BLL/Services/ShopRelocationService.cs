@@ -179,6 +179,9 @@ public class ShopRelocationService(AppDbContext db, IHubContext<NotificationHub>
             foreach (var location in store.Locations) {
                 location.Address = row.ProposedAddress; location.Latitude = row.ProposedLatitude; location.Longitude = row.ProposedLongitude;
             }
+            var pickupNow = DateTime.UtcNow;
+            var pickups = await db.PickupReservations.AsNoTracking().Where(r => r.StoreId == store.Id && r.Status == "ACCEPTED" && r.ExpiresAt > pickupNow).ToListAsync();
+            foreach (var pickup in pickups) PickupNotifications.Location(db, pickup, row.Id, pickupNow);
         }
         row.Status = outcome; row.ReviewedAt = DateTime.UtcNow; row.ReviewedByUserId = adminId;
         row.ReviewedByName = admin.FullName; row.ReviewReason = reason; row.ReviewRequestId = request.ClientRequestId;

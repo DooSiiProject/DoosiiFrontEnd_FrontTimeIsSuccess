@@ -22,7 +22,7 @@ namespace Doosii.BLL.Services
         }
         private static void EnsureEditable(Product p, string? version = null)
         {
-            if (p.Status != "AVAILABLE" || p.ReservedOrderId != null) throw new InvalidOperationException("Không thể sửa sản phẩm đang được giữ hoặc đã bán.");
+            if (p.Status != "AVAILABLE" || p.ReservedOrderId != null || p.ReservedPickupReservationId != null) throw new InvalidOperationException("Không thể sửa sản phẩm đang được giữ hoặc đã bán.");
             if (version != null && Convert.ToBase64String(p.RowVersion) != version) throw new InvalidOperationException("Sản phẩm đã thay đổi. Tải lại dữ liệu trước khi lưu.");
         }
         private Task ValidateRequest(ProductWriteRequest request) => ValidateAsync(_context, request, categoryAsBadRequest: false);
@@ -81,6 +81,8 @@ namespace Doosii.BLL.Services
             if (product.ProductGroupId != null) throw new InvalidOperationException("Hãy gỡ món khỏi bài gộp trước khi xóa sản phẩm.");
             if (await _context.PostMedia.AnyAsync(m => m.ProductId == productId))
                 throw new InvalidOperationException("Sản phẩm đang được nhắc trong bài cộng đồng. Hãy ẩn sản phẩm thay vì xóa để giữ liên kết và lịch sử.");
+            if (await _context.PickupReservations.AnyAsync(r => r.ProductId == productId))
+                throw new InvalidOperationException("Sản phẩm đã có lịch sử giữ tại shop. Hãy ẩn thay vì xóa.");
             _context.Products.Remove(product); await Doosii.DAL.Data.UploadedImageGuard.SaveChangesAsync(_context); await tx.CommitAsync();
         }
         public async Task<ProductDto> GetManagedProductAsync(int userId, int productId)

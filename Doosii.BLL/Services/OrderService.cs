@@ -37,6 +37,7 @@ namespace Doosii.BLL.Services
                 ?? throw new KeyNotFoundException("Không tìm thấy sản phẩm.");
             if (locked)
             {
+                await PickupReservationLifecycle.ExpireProductAsync(_context, product, DateTime.UtcNow);
                 // Keep eligibility stable without taking serializable range locks on the orders index.
                 await _context.Stores.FromSqlInterpolated($"SELECT * FROM [store].[Stores] WITH (HOLDLOCK) WHERE [Id] = {product.StoreId}").LoadAsync();
                 await _context.Users.FromSqlInterpolated($"SELECT * FROM [auth].[Users] WITH (HOLDLOCK) WHERE [Id] = {product.Store.OwnerId}").LoadAsync();
@@ -47,7 +48,7 @@ namespace Doosii.BLL.Services
             }
             if (product.Store.OwnerId == buyerId) throw new InvalidOperationException("Bạn không thể mua sản phẩm của mình.");
             if (!product.IsPublished || !product.Store.IsActive || product.Store.Owner.Role != "Shopper" || product.Store.Owner.MerchantProfile?.KycStatus != "APPROVED") throw new InvalidOperationException("Sản phẩm hoặc shop không còn được bán.");
-            if (product.Status != "AVAILABLE") throw new InvalidOperationException("Sản phẩm đang được giữ hoặc đã bán.");
+            if (product.Status != "AVAILABLE" || product.ReservedOrderId != null || product.ReservedPickupReservationId != null) throw new InvalidOperationException("Sản phẩm đang được giữ hoặc đã bán.");
             return product;
         }
         private OrderQuoteResponse Quote(Doosii.DAL.Models.Store.Product product)
@@ -60,7 +61,12 @@ namespace Doosii.BLL.Services
                 ProductPrice = product.Price, ShippingFee = shipping, EscrowFee = fee, EscrowFeeRate = EscrowFeeRate,
                 TotalAmount = product.Price + shipping + fee, ProductVersion = Convert.ToBase64String(product.RowVersion) };
         }
-        public async Task<OrderQuoteResponse> QuoteAsync(int buyerId, int productId) => Quote(await PurchasableAsync(buyerId, productId, false));
+        public async Task<OrderQuoteResponse> QuoteAsync(int buyerId, int productId)
+        {
+            await using var tx = await _context.Database.BeginTransactionAsync();
+            var product = await PurchasableAsync(buyerId, productId, true);
+            var quote = Quote(product); await tx.CommitAsync(); return quote;
+        }
         public async Task<OrderResponse> CreateEscrowOrderAsync(int buyerId, CreateEscrowOrderRequest request)
         {
             if (request.ClientRequestId == Guid.Empty) throw new InvalidOperationException("Mã yêu cầu không hợp lệ.");
@@ -182,7 +188,7 @@ namespace Doosii.BLL.Services
             order.Status = OrderStatus.Cancelled; order.UpdatedAt = DateTime.UtcNow;
             foreach (var item in order.Items) {
                 var product = await _context.Products.FromSqlInterpolated($"SELECT * FROM [store].[Products] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {item.ProductId}").SingleAsync();
-                if (product.Status == "LOCKED" && product.ReservedOrderId == order.Id) { product.Status = "AVAILABLE"; product.ReservedOrderId = null; product.UpdatedAt = DateTime.UtcNow; }
+                if (product.Status == "LOCKED" && product.ReservedOrderId == order.Id && product.ReservedPickupReservationId == null) { product.Status = "AVAILABLE"; product.ReservedOrderId = null; product.UpdatedAt = DateTime.UtcNow; }
             }
             await _context.SaveChangesAsync(); await tx.CommitAsync();
             return MapToOrderResponse(order, order.Buyer.FullName, order.Seller.FullName);

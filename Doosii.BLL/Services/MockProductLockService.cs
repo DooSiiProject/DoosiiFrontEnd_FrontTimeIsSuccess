@@ -23,7 +23,7 @@ namespace Doosii.BLL.Services
             var product = await _context.Products.FindAsync(productId);
             if (product != null)
             {
-                if (product.Status != "AVAILABLE" || !product.IsPublished)
+                if (product.Status != "AVAILABLE" || !product.IsPublished || product.ReservedOrderId != null || product.ReservedPickupReservationId != null)
                 {
                     _logger.LogWarning("[PRODUCT LOCK] Cannot lock ProductId {ProductId}. Current status: {Status}", productId, product.Status);
                     return false;
@@ -46,7 +46,8 @@ namespace Doosii.BLL.Services
             var product = await _context.Products.FindAsync(productId);
             if (product != null)
             {
-                if (orderId.HasValue && product.ReservedOrderId != orderId.Value) return;
+                if (!orderId.HasValue) throw new InvalidOperationException("Cần mã đơn sở hữu khóa để mở bán lại.");
+                if (product.ReservedPickupReservationId != null || product.Status != "LOCKED" || product.ReservedOrderId != orderId.Value) return;
                 product.Status = "AVAILABLE"; product.ReservedOrderId = null;
                 product.UpdatedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
@@ -62,7 +63,7 @@ namespace Doosii.BLL.Services
             var product = await _context.Products.FindAsync(productId);
             if (product != null)
             {
-                if (orderId.HasValue && product.ReservedOrderId != orderId.Value) throw new InvalidOperationException("Sản phẩm không thuộc lượt giữ của đơn hàng này.");
+                if (!orderId.HasValue || product.ReservedPickupReservationId != null || product.ReservedOrderId != orderId.Value || product.Status is not ("LOCKED" or "SOLD")) throw new InvalidOperationException("Sản phẩm không thuộc lượt giữ của đơn hàng này.");
                 product.Status = "SOLD";
                 product.UpdatedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();

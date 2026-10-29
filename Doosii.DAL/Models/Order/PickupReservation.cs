@@ -13,7 +13,7 @@ public static class PickupReservationStatus
     public const string Completed = "COMPLETED";
 }
 
-/// <summary>Schema for future pickup services; B1/B2 do not expose reservation endpoints.</summary>
+/// <summary>Pickup history; service transactions own the product reservation lifecycle.</summary>
 [Table("PickupReservations", Schema = "store")]
 public class PickupReservation
 {

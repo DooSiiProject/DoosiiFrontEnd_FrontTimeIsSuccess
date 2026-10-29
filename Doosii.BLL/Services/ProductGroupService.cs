@@ -167,7 +167,7 @@ public sealed class ProductGroupService(AppDbContext db) : IProductGroupService
     }
     private static void Editable(Product p, string version)
     {
-        if (p.Status != "AVAILABLE" || p.ReservedOrderId != null) throw new ServiceException(409, "Món đang giữ hoặc đã bán chỉ có thể KEEP.", "PRODUCT_NOT_EDITABLE");
+        if (p.Status != "AVAILABLE" || p.ReservedOrderId != null || p.ReservedPickupReservationId != null) throw new ServiceException(409, "Món đang giữ hoặc đã bán chỉ có thể KEEP.", "PRODUCT_NOT_EDITABLE");
         if (Convert.ToBase64String(p.RowVersion) != version) throw Changed("PRODUCT_VERSION_CONFLICT");
     }
     private static bool VersionValid(string? version) => version != null && Convert.TryFromBase64String(version, new Span<byte>(new byte[8]), out var bytes) && bytes == 8;
@@ -238,7 +238,7 @@ public sealed class ProductGroupService(AppDbContext db) : IProductGroupService
         var dto = new ProductGroupManageDto { Description = g.Description, IsPublished = g.IsPublished, Version = Convert.ToBase64String(g.RowVersion), SharedImageUrls = OrderedImages(g),
             Products = g.Products.OrderBy(p => p.GroupPosition).ThenBy(p => p.Id).Select(p => new ProductGroupManagedItemDto {
                 ProductId = p.Id, ClientItemId = p.ClientRequestId, GroupPosition = p.GroupPosition!.Value, Version = Convert.ToBase64String(p.RowVersion),
-                Status = p.Status, IsPublished = p.IsPublished, CanEdit = p.Status == "AVAILABLE" && p.ReservedOrderId == null, CanDetach = p.Status == "AVAILABLE" && p.ReservedOrderId == null,
+                Status = p.Status, IsPublished = p.IsPublished, CanEdit = p.Status == "AVAILABLE" && p.ReservedOrderId == null && p.ReservedPickupReservationId == null, CanDetach = p.Status == "AVAILABLE" && p.ReservedOrderId == null && p.ReservedPickupReservationId == null,
                 Product = ProductWriteRules.Map(p) }).ToList() };
         Summary(g, dto); return dto;
     }

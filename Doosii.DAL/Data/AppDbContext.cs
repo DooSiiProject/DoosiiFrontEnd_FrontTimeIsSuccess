@@ -62,6 +62,7 @@ namespace Doosii.DAL.Data
 
         // Notification Module (Track 2 - Wee)
         public DbSet<Notification> Notifications { get; set; }
+        public DbSet<PickupNotificationOutbox> PickupNotificationOutbox { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

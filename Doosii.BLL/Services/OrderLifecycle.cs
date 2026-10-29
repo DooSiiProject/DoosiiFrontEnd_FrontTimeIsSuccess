@@ -24,7 +24,7 @@ internal static class OrderLifecycle
         foreach (var item in order.Items)
         {
             var product = await db.Products.FromSqlInterpolated($"SELECT * FROM [store].[Products] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {item.ProductId}").SingleOrDefaultAsync();
-            if (product?.Status == "LOCKED" && product.ReservedOrderId == order.Id)
+            if (product?.Status == "LOCKED" && product.ReservedOrderId == order.Id && product.ReservedPickupReservationId == null)
             {
                 product.Status = "AVAILABLE"; product.ReservedOrderId = null; product.UpdatedAt = DateTime.UtcNow;
             }

@@ -1,8 +1,9 @@
 # Giữ đồ và nhận tại shop — B1/B2
 
 Ngày: 27/10/2026. B1 chốt quy tắc; B2 thêm model, migration và DTO hợp đồng.
-Các endpoint dưới đây là mục tiêu B3/B4, **chưa được triển khai hoặc đăng ký**.
-FE `/holds` vẫn hiện thông báo dừng cho đến B5. Không chạy migration vào DB ứng dụng ở B2.
+Bản cập nhật B4 ngày 28/10/2026 đã có toàn bộ endpoint trong hợp đồng, worker
+và notification outbox. Xem `pickup-reservation-b3.md` và `pickup-reservation-b4.md`.
+FE `/holds` vẫn hiện thông báo dừng cho đến B5. Chưa migrate DB ứng dụng.
 
 ## B1 — Quy tắc nghiệp vụ
 
@@ -91,8 +92,12 @@ SellerId lấy từ chủ shop khi tạo, kiểm tra lại lúc duyệt; không 
 
 ### Khóa chung với checkout (triển khai ở B3)
 
-Lock thứ tự thống nhất: Buyer user (quota/idempotency) → Product (UPDLOCK,HOLDLOCK) →
-reservation liên quan → eligibility shop/seller. Không giữ reservation row lock trước
+Lock B3: application lock theo BuyerId cho create (quota/idempotency) → Product
+(UPDLOCK,HOLDLOCK) → reservation liên quan → eligibility shop/seller. Application lock
+thay user UPDLOCK để không chặn chéo đơn bán của chính Shopper đó.
+Cleanup hết hạn có transaction riêng, chỉ khóa một product mỗi lần trước transaction
+nghiệp vụ để một phản hồi stale version không rollback việc mở khóa đã hết hạn.
+Không giữ reservation row lock trước
 product rồi quay lại lấy product. Worker, cancel, complete và accept phải cùng thứ tự;
 rà soát tương tác với OrderLifecycle để tránh vòng chờ qua product/order.
 
@@ -102,7 +107,7 @@ phóng khi pointer vẫn trỏ chính reservation đó. Never gọi unlock khôn
 Rà soát MockProductLockService, OrderService, ProductService, ProductGroupService,
 relocation và worker khi B3/B4; không chỉ thêm điều kiện ở controller.
 
-## Hợp đồng HTTP mục tiêu — chưa có endpoint ở B2
+## Hợp đồng HTTP (B3/B4 đã triển khai)
 
 Prefix `/api/pickup-reservations`; đăng nhập bắt buộc. Dùng envelope ApiResponse hiện có.
 
@@ -163,7 +168,10 @@ hai pointer null. Hash/code trong mẫu chỉ minh họa hợp đồng, không c
 
 ## Bàn giao B3–B6
 
-B3 thêm service/controller với eligibility/transaction/role/idempotency/quota và guard
-mọi đường khóa sản phẩm. B4 worker, code protection/rate limit, nhận hàng, relocation
-notifications và các notification trạng thái. B5 FE. B6 HTTP/SQL concurrency và UI E2E.
-B2 chỉ xác minh cấu trúc/ràng buộc và DTO; không tuyên bố vòng đời pickup đã chạy được.
+B3/B4 đã có service/controller, guard khóa sản phẩm, mã nhận/nhận hàng, worker và
+notification outbox. B5 đã nối FE (xem `FE/docs/pickup-b5-integration.md`): tạo,
+duyệt, mã nhận, hoàn tất và hủy đã kiểm tra qua trình duyệt trên DB tạm.
+B6 đã kiểm tra tích hợp cục bộ Production với DB/key ring riêng, restart tiến trình,
+worker hết hạn, relocation và xung đột qua UI; xem `FE/docs/pickup-b6-verification.md`.
+Smoke trên máy triển khai thật vẫn cần trước phát hành.
+Các ca HTTP/SQL concurrency đã được kiểm tra trong quá trình B3/B4; chưa áp dụng DB ứng dụng.
