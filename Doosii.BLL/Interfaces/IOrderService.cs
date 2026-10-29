@@ -5,6 +5,8 @@ namespace Doosii.BLL.Interfaces
     public interface IOrderService
     {
         Task<OrderQuoteResponse> QuoteAsync(int buyerId, int productId);
+        Task<OrderQuoteResponse> QuotePassCodAsync(int buyerId, int postId);
+        Task<OrderResponse> CreatePassCodAsync(int buyerId, CreatePassCodRequest request);
         Task<OrderResponse> CreateEscrowOrderAsync(int buyerId, CreateEscrowOrderRequest request);
         Task<OrderResponse> GetOrderByIdAsync(int orderId, int userId);
         Task<List<OrderResponse>> GetMyPurchasesAsync(int buyerId);

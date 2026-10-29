@@ -12,6 +12,8 @@ using Doosii.BLL.Services;
 using Doosii.DAL.Data;
 using Doosii.DAL.Models;
 using Doosii.DAL.Models.Store;
+using Doosii.DAL.Models.Forum;
+using Doosii.DAL.Models.Order;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -196,6 +198,21 @@ try
     await Request(HttpMethod.Delete, $"/api/community/posts/{passId}/comments/{commentId}", 200, casual2);
     var tombstone = await Request(HttpMethod.Get, $"/api/community/posts/{passId}/comments", 200);
     Assert(tombstone.GetProperty("items")[0].GetProperty("isDeleted").GetBoolean(), "comment tombstone preserves replies");
+    await using (var scope = app.Services.CreateAsyncScope()) {
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var hold = new Order { BuyerId = casual2, SellerId = casual, ReceiverName = "QA", ReceiverPhone = "0900000000", ShippingAddress = "Fixture", Status = OrderStatus.CodPending, PaymentMethod = "COD" };
+        db.Orders.Add(hold); await db.SaveChangesAsync(); db.Set<PassOrderLock>().Add(new PassOrderLock { PostId = passId, OrderId = hold.Id }); await db.SaveChangesAsync();
+    }
+    await Request(HttpMethod.Patch, $"/api/community/posts/{passId}/sale-status", 409, casual, new { saleStatus = "SOLD", version = pass.GetProperty("version").GetString() }, error: "PASS_ORDER_LOCKED");
+    await Request(HttpMethod.Patch, $"/api/community/posts/{passId}/visibility", 409, casual, new { visibilityStatus = "HIDDEN", version = pass.GetProperty("version").GetString() }, error: "PASS_ORDER_LOCKED");
+    var reservedPass = await Request(HttpMethod.Get, $"/api/community/posts/{passId}", 200, casual2);
+    Assert(reservedPass.GetProperty("isPassReserved").GetBoolean(), "public detail shows PASS reservation without exposing buyer");
+    await using (var scope = app.Services.CreateAsyncScope()) {
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await db.Set<PassOrderLock>().Where(l => l.PostId == passId).ExecuteDeleteAsync();
+    }
+    var freePass = await Request(HttpMethod.Get, $"/api/community/posts/{passId}", 200, casual2);
+    Assert(!freePass.GetProperty("isPassReserved").GetBoolean(), "released PASS no longer appears reserved");
     var sold = await Request(HttpMethod.Patch, $"/api/community/posts/{passId}/sale-status", 200, casual, new { saleStatus = "SOLD", version = pass.GetProperty("version").GetString() });
     Assert(sold.GetProperty("saleStatus").GetString() == "SOLD", "PASS marked sold");
     var report = await Request(HttpMethod.Post, $"/api/community/posts/{passId}/reports", 201, casual2, new { reason = "SCAM" }); int reportId = report.GetProperty("id").GetInt32();

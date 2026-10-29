@@ -77,6 +77,7 @@ public partial class CommunityPostService
             {
                 await CommunityAccess.LockAsync(db, $"community:post:{postId}");
                 var post = await db.Posts.Include(p => p.Media).Include(p => p.PassInfo).SingleAsync(p => p.Id == postId);
+                if (post.Type == "PASS" && await db.Set<PassOrderLock>().AnyAsync(l => l.PostId == postId)) throw new ServiceException(409, "Món PASS đang thuộc một đơn hàng.", "PASS_ORDER_LOCKED");
                 await EditableAsync(post, actorId, request.Type); CommunityAccess.Version(post, request.Version);
                 await AttachmentsAsync(actorId, request); ValidateRetained(retained, post.Media.ToList());
                 var keep = retained.Select(m => m.Id!.Value).ToHashSet();
@@ -120,6 +121,7 @@ public partial class CommunityPostService
             await CommunityAccess.LockAsync(db, $"community:post:{postId}");
             var actor = await CommunityAccess.ActorAsync(db, actorId); admin = actor.Role == "Admin";
             var post = await db.Posts.SingleOrDefaultAsync(p => p.Id == postId) ?? throw new ServiceException(404, "Không tìm thấy bài viết.", "POST_NOT_FOUND");
+            if (!admin && post.Type == "PASS" && await db.Set<PassOrderLock>().AnyAsync(l => l.PostId == postId)) throw new ServiceException(409, "Món PASS đang thuộc một đơn hàng.", "PASS_ORDER_LOCKED");
             if (post.AuthorId != actorId && !admin) throw new ServiceException(403, "Không có quyền sửa bài.", "POST_NOT_OWNED");
             CommunityAccess.Version(post, request.Version);
             if (!admin && post.HiddenByAdmin) throw new ServiceException(403, "Bài đang bị quản trị viên ẩn.", "POST_MODERATED");
@@ -136,6 +138,7 @@ public partial class CommunityPostService
         {
             await CommunityAccess.LockAsync(db, $"community:post:{postId}");
             var post = await db.Posts.Include(p => p.PassInfo).SingleOrDefaultAsync(p => p.Id == postId) ?? throw new ServiceException(404, "Không tìm thấy bài viết.", "POST_NOT_FOUND");
+            if (await db.Set<PassOrderLock>().AnyAsync(l => l.PostId == postId)) throw new ServiceException(409, "Món PASS đang thuộc một đơn hàng.", "PASS_ORDER_LOCKED");
             await EditableAsync(post, actorId, "PASS"); CommunityAccess.Version(post, request.Version);
             post.PassInfo!.SaleStatus = request.SaleStatus; post.UpdatedAt = DateTime.UtcNow;
             await db.SaveChangesAsync(); await tx.CommitAsync();

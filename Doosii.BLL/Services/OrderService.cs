@@ -9,7 +9,7 @@ using Doosii.DAL.Models.Order;
 
 namespace Doosii.BLL.Services
 {
-    public class OrderService : IOrderService
+    public partial class OrderService : IOrderService
     {
         private readonly AppDbContext _context;
         private readonly IProductLockService _productLockService;
@@ -183,12 +183,15 @@ namespace Doosii.BLL.Services
         {
             await using var tx = await _context.Database.BeginTransactionAsync();
             var order = await OrderLifecycle.LockAsync(_context, orderId);
-            if (order.BuyerId != buyerId || order.Buyer.Role == "Banned") throw new UnauthorizedAccessException("Chỉ người mua được hủy đơn của mình.");
+            var isBuyer = order.BuyerId == buyerId && order.Buyer.Role != "Banned";
+            var isCodSeller = order.SellerId == buyerId && order.Seller.Role != "Banned" && order.PaymentMethod == "COD";
+            if (!isBuyer && !isCodSeller) throw new UnauthorizedAccessException("Bạn không có quyền hủy đơn này.");
             if (order.Status == OrderStatus.Cancelled) return MapToOrderResponse(order, order.Buyer.FullName, order.Seller.FullName);
             OrderLifecycle.EnsureVersion(order, request.Version);
-            if (order.Status is not (OrderStatus.PendingPayment or OrderStatus.CodPending) || order.PaidAt.HasValue || order.EscrowTransactions.Any()) throw new InvalidOperationException("Chỉ hủy đơn chưa thanh toán và chưa gửi hàng.");
+            if (order.Status is not (OrderStatus.PendingPayment or OrderStatus.CodPending) || order.PaidAt.HasValue || order.EscrowTransactions.Any() || (!isBuyer && order.Status != OrderStatus.CodPending)) throw new InvalidOperationException("Chỉ hủy đơn chưa thanh toán và chưa gửi hàng.");
             order.Status = OrderStatus.Cancelled; order.UpdatedAt = DateTime.UtcNow;
             foreach (var item in order.Items) {
+                if (item.SourceType == "PASS_POST") { await ClosePassLockAsync(item, order.Id, false); continue; }
                 var product = await _context.Products.FromSqlInterpolated($"SELECT * FROM [store].[Products] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {item.RequireShopProductId()}").SingleAsync();
                 if (product.Status == "LOCKED" && product.ReservedOrderId == order.Id && product.ReservedPickupReservationId == null) { product.Status = "AVAILABLE"; product.ReservedOrderId = null; product.UpdatedAt = DateTime.UtcNow; }
             }
@@ -206,6 +209,7 @@ namespace Doosii.BLL.Services
             if (order.PaymentMethod != "COD" || order.Status != OrderStatus.CodInTransit) throw new InvalidOperationException("Đơn không phải COD đang giao.");
             order.Status = OrderStatus.CodCompleted; order.PaidAt = order.DeliveredAt = order.CompletedAt = order.UpdatedAt = DateTime.UtcNow;
             foreach (var item in order.Items) {
+                if (item.SourceType == "PASS_POST") { await ClosePassLockAsync(item, order.Id, true); continue; }
                 await _context.Products.FromSqlInterpolated($"SELECT * FROM [store].[Products] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {item.RequireShopProductId()}").LoadAsync();
                 await _productLockService.MarkProductAsSoldAsync(item.RequireShopProductId(), order.Id);
             }
@@ -366,13 +370,14 @@ namespace Doosii.BLL.Services
         {
             var shops = order.Items.Where(i => i.SourceType == "SHOP_PRODUCT" && i.StoreIdSnapshot.HasValue && i.StoreNameSnapshot != null)
                 .Select(i => new { i.StoreIdSnapshot, i.StoreNameSnapshot }).Distinct().ToArray();
+            var sellers = order.Items.Select(i => i.SellerNameSnapshot).Where(name => !string.IsNullOrWhiteSpace(name)).Distinct().ToArray();
             return new OrderResponse
             {
                 Id = order.Id,
                 BuyerId = order.BuyerId,
                 BuyerName = buyerName,
                 SellerId = order.SellerId,
-                SellerName = sellerName,
+                SellerName = sellers.Length == 1 ? sellers[0]! : sellerName,
                 StoreId = shops.Length == 1 && order.Items.All(i => i.SourceType == "SHOP_PRODUCT" && i.StoreIdSnapshot == shops[0].StoreIdSnapshot) ? shops[0].StoreIdSnapshot : null,
                 StoreName = shops.Length == 1 && order.Items.All(i => i.SourceType == "SHOP_PRODUCT" && i.StoreIdSnapshot == shops[0].StoreIdSnapshot) ? shops[0].StoreNameSnapshot : null,
                 ProductPrice = order.ProductPrice,

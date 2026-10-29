@@ -101,8 +101,39 @@ try
     Check((await service.GetMyPurchasesAsync(buyer.Id)).Single(o => o.Id == created.Id).StoreName == "Renamed shop", "purchase list uses same snapshot");
     Check((await service.GetMySalesAsync(seller.Id)).Single(o => o.Id == created.Id).StoreName == "Renamed shop", "seller list uses same snapshot");
     Check((await service.CreateEscrowOrderAsync(buyer.Id, request)).Id == created.Id, "shop retry remains idempotent");
-    var cancelled = await service.CancelAsync(created.Id, buyer.Id, new ConfirmOrderRequest { Version = created.Version });
-    Check(cancelled.Status == OrderStatus.Cancelled, "old shop cancellation still works with nullable source schema");
+    var cancelled = await service.CancelAsync(created.Id, seller.Id, new ConfirmOrderRequest { Version = created.Version });
+    Check(cancelled.Status == OrderStatus.Cancelled, "shop seller may cancel COD before shipping and release product");
+    var passSeller = new User { Email = "pass-seller@example.invalid", FullName = "Pass seller", PasswordHash = "fixture", Role = "CasualUser" };
+    var buyerTwo = new User { Email = "pass-buyer2@example.invalid", FullName = "Buyer two", PasswordHash = "fixture", Role = "CasualUser" };
+    db.Users.AddRange(passSeller, buyerTwo); await db.SaveChangesAsync();
+    var codPost = new Post { AuthorId = passSeller.Id, Type = "PASS", Title = "COD PASS", PostDescription = "Fixture", ClientRequestId = Guid.NewGuid(),
+        PassInfo = new PassPostInfo { ProductName = "Vintage", Price = 100000, Size = "M", Defects = "Không có" } };
+    db.Posts.Add(codPost); await db.SaveChangesAsync();
+    var passQuote = await service.QuotePassCodAsync(buyer.Id, codPost.Id);
+    Check(passQuote.ProductPrice == 100000 && passQuote.EscrowFee == 0 && passQuote.PassPostId == codPost.Id, "PASS COD quote uses seller and no escrow");
+    CreatePassCodRequest PassRequest() => new() { PassPostId = codPost.Id, ProductVersion = passQuote.ProductVersion, ClientRequestId = Guid.NewGuid(), ReceiverName = "Buyer", ReceiverPhone = "0900000000", ShippingAddress = "Fixture" };
+    var requestA = PassRequest(); var requestB = PassRequest();
+    async Task<OrderResponse?> Race(int userId, CreatePassCodRequest body)
+    {
+        await using var context = new AppDbContext(options);
+        var worker = new OrderService(context, new MockProductLockService(context, NullLogger<MockProductLockService>.Instance), NullLogger<OrderService>.Instance, new ConfigurationBuilder().Build());
+        try { return await worker.CreatePassCodAsync(userId, body); } catch (InvalidOperationException) { return null; }
+    }
+    var race = await Task.WhenAll(Race(buyer.Id, requestA), Race(buyerTwo.Id, requestB));
+    Check(race.Count(x => x != null) == 1, "concurrent PASS orders have one winner");
+    var winner = race.Single(x => x != null)!; var winnerId = winner.BuyerId;
+    Check(await db.Set<PassOrderLock>().CountAsync(l => l.PostId == codPost.Id && l.OrderId == winner.Id) == 1, "lock owned by winner");
+    db.ChangeTracker.Clear(); var closedPass = await service.CancelAsync(winner.Id, winnerId, new ConfirmOrderRequest { Version = winner.Version });
+    Check(closedPass.Status == OrderStatus.Cancelled && !await db.Set<PassOrderLock>().AnyAsync(l => l.PostId == codPost.Id), "cancel releases PASS lock");
+    db.ChangeTracker.Clear(); var secondQuote = await service.QuotePassCodAsync(buyer.Id, codPost.Id); var second = PassRequest(); second.ProductVersion = secondQuote.ProductVersion;
+    var passOrder = await service.CreatePassCodAsync(buyer.Id, second);
+    Check((await service.CreatePassCodAsync(buyer.Id, second)).Id == passOrder.Id, "PASS COD retry does not duplicate order");
+    var shipped = await service.ShipOrderAsync(passOrder.Id, passSeller.Id, new ShipOrderRequest { Version = passOrder.Version, ShippingCarrier = "Fixture ship", TrackingCode = "TEST123" });
+    var complete = await service.CollectCodAsync(passOrder.Id, passSeller.Id, new ConfirmOrderRequest { Version = shipped.Version });
+    db.ChangeTracker.Clear();
+    Check(complete.Status == OrderStatus.CodCompleted && (await db.Set<PassPostInfo>().SingleAsync(p => p.PostId == codPost.Id)).SaleStatus == "SOLD", "PASS COD completion marks sold");
+    Check(!await db.Set<PassOrderLock>().AnyAsync(l => l.PostId == codPost.Id), "completion releases lock");
+    Check(!await db.EscrowTransactions.AnyAsync(e => e.OrderId == passOrder.Id), "PASS COD never creates escrow");
     Console.WriteLine($"PASS: {checks} SQL migration/source/snapshot/rollback assertions.");
 }
 finally

@@ -68,6 +68,7 @@ public class CommunityPostDto
     public bool HiddenByAdmin { get; set; }
     public CommunityPassInfo? PassInfo { get; set; }
     public string? SaleStatus { get; set; }
+    public bool IsPassReserved { get; set; }
     public List<CommunityMediaDto> Media { get; set; } = new();
     public CommunityInteractionSummary Summary { get; set; } = new();
     public string Version { get; set; } = "";

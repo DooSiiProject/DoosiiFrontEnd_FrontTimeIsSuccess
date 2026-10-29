@@ -84,11 +84,13 @@ public partial class CommunityPostService(AppDbContext db, ICommunityMediaStorag
             .Select(g => new { Id = g.Key, Count = g.Count(), Mine = viewerId.HasValue && g.Any(r => r.UserId == viewerId) }).ToDictionaryAsync(r => r.Id);
         var comments = await db.Comments.Where(c => ids.Contains(c.PostId) && !c.IsDeleted && c.Author.Role != "Banned").GroupBy(c => c.PostId)
             .Select(g => new { Id = g.Key, Count = g.Count() }).ToDictionaryAsync(c => c.Id);
+        var reserved = (await db.Set<Doosii.DAL.Models.Forum.PassOrderLock>().AsNoTracking().Where(l => ids.Contains(l.PostId)).Select(l => l.PostId).ToListAsync()).ToHashSet();
         return posts.Select(p => new CommunityPostDto {
             Id = p.Id, Type = p.Type, Author = new() { Id = p.AuthorId, FullName = p.Author.FullName, AvatarUrl = p.Author.AvatarUrl },
             Title = p.Title, PostDescription = p.PostDescription, VisibilityStatus = p.VisibilityStatus, HiddenByAdmin = p.HiddenByAdmin,
             Version = Convert.ToBase64String(p.RowVersion), CreatedAt = Utc(p.CreatedAt), UpdatedAt = p.UpdatedAt.HasValue ? Utc(p.UpdatedAt.Value) : null,
             SaleStatus = p.PassInfo?.SaleStatus,
+            IsPassReserved = p.Type == "PASS" && reserved.Contains(p.Id),
             PassInfo = p.PassInfo == null ? null : new() { ProductName = p.PassInfo.ProductName, ProductDescription = p.PassInfo.ProductDescription,
                 Price = p.PassInfo.Price, Size = p.PassInfo.Size, ConditionPercent = p.PassInfo.ConditionPercent, Defects = p.PassInfo.Defects,
                 StyleTagIds = JsonSerializer.Deserialize<List<string>>(p.PassInfo.StyleTagsJson) ?? new(),

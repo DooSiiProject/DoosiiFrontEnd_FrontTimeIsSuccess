@@ -15,6 +15,7 @@ using Doosii.BLL.Services;
 using Doosii.DAL.Data;
 using Doosii.DAL.Models;
 using Doosii.DAL.Models.Store;
+using Doosii.DAL.Models.Forum;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
@@ -163,6 +164,44 @@ try
     string Path(JsonElement row, string? action = null) => $"/api/pickup-reservations/{row.GetProperty("id").GetInt32()}" + (action == null ? "" : "/" + action);
     object Version(JsonElement row) => new { version = row.GetProperty("version").GetString() };
     object Close(JsonElement row, string reason = "QA cancel") => new { version = row.GetProperty("version").GetString(), reason };
+
+    // PASS COD exercises the real controller, authentication and SQL locks.
+    var passId = await Db(async db => {
+        var post = new Post { AuthorId = users[0].Id, Type = "PASS", Title = "Synthetic PASS COD", PostDescription = "Fixture", ClientRequestId = Guid.NewGuid(),
+            PassInfo = new PassPostInfo { ProductName = "PASS jacket", Price = 120000, Size = "M", Defects = "Không có" } };
+        db.Posts.Add(post); await db.SaveChangesAsync(); return post.Id;
+    });
+    await Call("GET", $"/api/Orders/pass/{passId}/quote", 401, null);
+    await Call("GET", $"/api/Orders/pass/{passId}/quote", 409, 0);
+    var passQuote = await Call("GET", $"/api/Orders/pass/{passId}/quote", 200, 1);
+    var passVersion = passQuote.GetProperty("productVersion").GetString();
+    var passRequestA = new { passPostId = passId, productVersion = passVersion, clientRequestId = Guid.NewGuid(), receiverName = "QA A", receiverPhone = "0900000000", shippingAddress = "Fixture address" };
+    var passRequestB = new { passPostId = passId, productVersion = passVersion, clientRequestId = Guid.NewGuid(), receiverName = "QA B", receiverPhone = "0900000000", shippingAddress = "Fixture address" };
+    var passRace = await Task.WhenAll(Send("POST", "/api/Orders/pass/cod", 1, passRequestA), Send("POST", "/api/Orders/pass/cod", 2, passRequestB));
+    Assert(passRace.Count(x => x.Status == 200) == 1 && passRace.Count(x => x.Status == 409) == 1, "PASS COD concurrent HTTP: one winner");
+    var passWinner = passRace.Single(x => x.Status == 200).Body.GetProperty("data"); var winningBuyer = passRace[0].Status == 200 ? 1 : 2;
+    var retryPass = winningBuyer == 1 ? await Call("POST", "/api/Orders/pass/cod", 200, 1, passRequestA) : await Call("POST", "/api/Orders/pass/cod", 200, 2, passRequestB);
+    Assert(retryPass.GetProperty("id").GetInt32() == passWinner.GetProperty("id").GetInt32(), "PASS COD HTTP retry is idempotent");
+    Assert(passWinner.GetProperty("items")[0].GetProperty("sourceType").GetString() == "PASS_POST", "PASS source returned to client");
+    await Call("GET", $"/api/Orders/{passWinner.GetProperty("id").GetInt32()}", 403, 3);
+    await Call("POST", $"/api/Orders/{passWinner.GetProperty("id").GetInt32()}/collect-cod", 409, 0, Version(passWinner));
+    var passShipped = await Call("POST", $"/api/Orders/{passWinner.GetProperty("id").GetInt32()}/ship", 200, 0, new { version = passWinner.GetProperty("version").GetString(), shippingCarrier = "Fixture", trackingCode = "COD1" });
+    await Call("POST", $"/api/Orders/{passWinner.GetProperty("id").GetInt32()}/cancel", 409, winningBuyer, Version(passShipped));
+    await Call("POST", $"/api/Orders/{passWinner.GetProperty("id").GetInt32()}/cancel", 409, 0, Version(passShipped));
+    var passComplete = await Call("POST", $"/api/Orders/{passWinner.GetProperty("id").GetInt32()}/collect-cod", 200, 0, Version(passShipped));
+    Assert(passComplete.GetProperty("status").GetString() == "COD_COMPLETED", "PASS COD HTTP completed");
+    Assert(await Db(db => db.PassPostInfos.Where(p => p.PostId == passId).Select(p => p.SaleStatus).SingleAsync()) == "SOLD", "PASS sold in database");
+    Assert(!await Db(db => db.Set<PassOrderLock>().AnyAsync(l => l.PostId == passId)), "PASS lock released after completion");
+    var passCancelId = await Db(async db => {
+        var post = new Post { AuthorId = users[0].Id, Type = "PASS", Title = "Synthetic PASS cancel", PostDescription = "Fixture", ClientRequestId = Guid.NewGuid(),
+            PassInfo = new PassPostInfo { ProductName = "PASS shirt", Price = 90000, Size = "M", Defects = "Không có" } };
+        db.Posts.Add(post); await db.SaveChangesAsync(); return post.Id;
+    });
+    var cancelQuote = await Call("GET", $"/api/Orders/pass/{passCancelId}/quote", 200, 1);
+    var sellerCancelOrder = await Call("POST", "/api/Orders/pass/cod", 200, 1, new { passPostId = passCancelId, productVersion = cancelQuote.GetProperty("productVersion").GetString(), clientRequestId = Guid.NewGuid(), receiverName = "QA", receiverPhone = "0900000000", shippingAddress = "Fixture" });
+    await Call("POST", $"/api/Orders/{sellerCancelOrder.GetProperty("id").GetInt32()}/cancel", 403, 3, Version(sellerCancelOrder));
+    var sellerCancelled = await Call("POST", $"/api/Orders/{sellerCancelOrder.GetProperty("id").GetInt32()}/cancel", 200, 0, Version(sellerCancelOrder));
+    Assert(sellerCancelled.GetProperty("status").GetString() == "CANCELLED" && !await Db(db => db.Set<PassOrderLock>().AnyAsync(l => l.PostId == passCancelId)), "PASS seller cancels COD before shipping and releases lock");
 
     await Call("GET", "/api/pickup-reservations/mine", 401, null);
     await Call("GET", "/api/pickup-reservations/mine", 403, 22, error: "ROLE_NOT_ALLOWED");
@@ -423,6 +462,9 @@ try
     var lastCode = (await Call("GET", Path(completeVsCancel, "pickup-code"), 200, 5)).GetProperty("pickupCode").GetString()!;
     var finalRace = await Task.WhenAll(Send("POST", Path(completeVsCancel, "complete"), 20, Complete(completeVsCancel, lastCode)), Send("POST", Path(completeVsCancel, "cancel"), 5, Close(completeVsCancel)));
     Assert(finalRace.Count(r => r.Status == 200) == 1 && finalRace.Count(r => r.Status == 409) == 1, "completion/cancellation race has one winner");
+    // This is a disposable fixture DB. Clear the synthetic PASS order so the
+    // older outbox rollback test can reach its own guard instead of the PASS guard.
+    await Db(db => db.Orders.Where(o => o.Id == passWinner.GetProperty("id").GetInt32() || o.Id == sellerCancelOrder.GetProperty("id").GetInt32()).ExecuteDeleteAsync());
     var pendingOutbox = await Db(db => db.PickupNotificationOutbox.CountAsync());
     var persistedNotifications = await Db(db => db.Notifications.CountAsync());
     await Db(async db => {

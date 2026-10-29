@@ -39,6 +39,27 @@ namespace Doosii.API.Controllers
             catch (UnauthorizedAccessException ex) { return StatusCode(403, ApiResponse<OrderQuoteResponse>.ErrorResponse(ex.Message)); }
             catch (InvalidOperationException ex) { return Conflict(ApiResponse<OrderQuoteResponse>.ErrorResponse(ex.Message)); }
         }
+        [HttpGet("pass/{postId:int}/quote")]
+        public async Task<IActionResult> QuotePassCod(int postId)
+        {
+            var userId = GetCurrentUserId(); if (userId == null) return Unauthorized();
+            try { return Ok(ApiResponse<OrderQuoteResponse>.SuccessResponse(await _orderService.QuotePassCodAsync(userId.Value, postId))); }
+            catch (KeyNotFoundException ex) { return NotFound(ApiResponse<OrderQuoteResponse>.ErrorResponse(ex.Message)); }
+            catch (UnauthorizedAccessException ex) { return StatusCode(403, ApiResponse<OrderQuoteResponse>.ErrorResponse(ex.Message)); }
+            catch (InvalidOperationException ex) { return Conflict(ApiResponse<OrderQuoteResponse>.ErrorResponse(ex.Message)); }
+            catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number is 1205 or 51001) { return Conflict(ApiResponse<OrderQuoteResponse>.ErrorResponse("Món đang được cập nhật. Hãy tải lại.")); }
+        }
+        [HttpPost("pass/cod")]
+        public async Task<IActionResult> CreatePassCod([FromBody] CreatePassCodRequest request)
+        {
+            var userId = GetCurrentUserId(); if (userId == null) return Unauthorized();
+            try { return Ok(ApiResponse<OrderResponse>.SuccessResponse(await _orderService.CreatePassCodAsync(userId.Value, request))); }
+            catch (KeyNotFoundException ex) { return NotFound(ApiResponse<OrderResponse>.ErrorResponse(ex.Message)); }
+            catch (UnauthorizedAccessException ex) { return StatusCode(403, ApiResponse<OrderResponse>.ErrorResponse(ex.Message)); }
+            catch (InvalidOperationException ex) { return Conflict(ApiResponse<OrderResponse>.ErrorResponse(ex.Message)); }
+            catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException) { return Conflict(ApiResponse<OrderResponse>.ErrorResponse("Dữ liệu đã thay đổi. Vui lòng tải lại.")); }
+            catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number is 1205 or 2601 or 2627 or 51001) { return Conflict(ApiResponse<OrderResponse>.ErrorResponse("Món đang được cập nhật. Hãy tải lại.")); }
+        }
         /// <summary>
         /// Tạo đơn hàng ký quỹ (Escrow Order) và khóa sản phẩm trong 15 phút
         /// </summary>
