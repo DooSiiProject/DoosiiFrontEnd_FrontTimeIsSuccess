@@ -86,7 +86,9 @@ namespace Doosii.BLL.Services
                 PaymentMethod = request.PaymentMethod, Status = request.PaymentMethod == "COD" ? OrderStatus.CodPending : OrderStatus.PendingPayment,
                 EscrowFee = quote.EscrowFee, TotalAmount = quote.TotalAmount, ClientRequestId = request.ClientRequestId,
                 ReceiverName = request.ReceiverName.Trim(), ReceiverPhone = request.ReceiverPhone.Trim(), ShippingAddress = request.ShippingAddress.Trim(),
-                Items = new List<OrderItem> { new() { ProductId = product.Id, ProductNameSnapshot = quote.ProductName, PriceSnapshot = quote.ProductPrice, ThumbnailSnapshot = quote.Thumbnail } } };
+                Items = new List<OrderItem> { new() { ProductId = product.Id, StoreIdSnapshot = product.StoreId, StoreNameSnapshot = product.Store.Name,
+                    SellerNameSnapshot = product.Store.Owner.FullName, SourceVersionSnapshot = product.RowVersion.ToArray(),
+                    ProductNameSnapshot = quote.ProductName, PriceSnapshot = quote.ProductPrice, ThumbnailSnapshot = quote.Thumbnail } } };
             _context.Orders.Add(order); await Doosii.DAL.Data.UploadedImageGuard.SaveChangesAsync(_context);
             if (!await _productLockService.LockProductAsync(product.Id, order.Id)) throw new InvalidOperationException("Không thể giữ sản phẩm cho đơn hàng.");
             await tx.CommitAsync();
@@ -115,20 +117,7 @@ namespace Doosii.BLL.Services
                 throw new UnauthorizedAccessException("Bạn không có quyền truy cập thông tin đơn hàng này.");
             }
 
-            var response = MapToOrderResponse(order, order.Buyer.FullName, order.Seller.FullName);
-            // Resolve from ordered products, never infer a shop from the seller alone.
-            var productIds = order.Items.Select(i => i.ProductId).Distinct().ToArray();
-            var products = await _context.Products.AsNoTracking()
-                .Where(p => productIds.Contains(p.Id))
-                .Select(p => new { p.Id, p.StoreId, StoreName = p.Store.Name, StoreOwnerId = p.Store.OwnerId })
-                .ToListAsync();
-            if (productIds.Length > 0 && products.Count == productIds.Length &&
-                products.All(p => p.StoreOwnerId == order.SellerId) && products.Select(p => p.StoreId).Distinct().Count() == 1)
-            {
-                response.StoreId = products[0].StoreId;
-                response.StoreName = products[0].StoreName;
-            }
-            return response;
+            return MapToOrderResponse(order, order.Buyer.FullName, order.Seller.FullName);
         }
 
         public async Task<List<OrderResponse>> GetMyPurchasesAsync(int buyerId)
@@ -186,7 +175,7 @@ namespace Doosii.BLL.Services
                 ?? throw new InvalidOperationException("Không tìm thấy khoản ký quỹ đã nhận của đơn hàng.");
             order.Status = OrderStatus.CompletedReleased; order.CompletedAt = DateTime.UtcNow; order.DeliveredAt ??= DateTime.UtcNow; order.UpdatedAt = DateTime.UtcNow;
             escrow.Status = EscrowStatus.Released; escrow.ReleasedAt = DateTime.UtcNow;
-            foreach (var item in order.Items) await _productLockService.MarkProductAsSoldAsync(item.ProductId, order.Id);
+            foreach (var item in order.Items) await _productLockService.MarkProductAsSoldAsync(item.RequireShopProductId(), order.Id);
             await Doosii.DAL.Data.UploadedImageGuard.SaveChangesAsync(_context);
         }
 
@@ -200,7 +189,7 @@ namespace Doosii.BLL.Services
             if (order.Status is not (OrderStatus.PendingPayment or OrderStatus.CodPending) || order.PaidAt.HasValue || order.EscrowTransactions.Any()) throw new InvalidOperationException("Chỉ hủy đơn chưa thanh toán và chưa gửi hàng.");
             order.Status = OrderStatus.Cancelled; order.UpdatedAt = DateTime.UtcNow;
             foreach (var item in order.Items) {
-                var product = await _context.Products.FromSqlInterpolated($"SELECT * FROM [store].[Products] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {item.ProductId}").SingleAsync();
+                var product = await _context.Products.FromSqlInterpolated($"SELECT * FROM [store].[Products] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {item.RequireShopProductId()}").SingleAsync();
                 if (product.Status == "LOCKED" && product.ReservedOrderId == order.Id && product.ReservedPickupReservationId == null) { product.Status = "AVAILABLE"; product.ReservedOrderId = null; product.UpdatedAt = DateTime.UtcNow; }
             }
             await _context.SaveChangesAsync(); await tx.CommitAsync();
@@ -217,8 +206,8 @@ namespace Doosii.BLL.Services
             if (order.PaymentMethod != "COD" || order.Status != OrderStatus.CodInTransit) throw new InvalidOperationException("Đơn không phải COD đang giao.");
             order.Status = OrderStatus.CodCompleted; order.PaidAt = order.DeliveredAt = order.CompletedAt = order.UpdatedAt = DateTime.UtcNow;
             foreach (var item in order.Items) {
-                await _context.Products.FromSqlInterpolated($"SELECT * FROM [store].[Products] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {item.ProductId}").LoadAsync();
-                await _productLockService.MarkProductAsSoldAsync(item.ProductId, order.Id);
+                await _context.Products.FromSqlInterpolated($"SELECT * FROM [store].[Products] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {item.RequireShopProductId()}").LoadAsync();
+                await _productLockService.MarkProductAsSoldAsync(item.RequireShopProductId(), order.Id);
             }
             await _context.SaveChangesAsync(); await tx.CommitAsync();
             return MapToOrderResponse(order, order.Buyer.FullName, order.Seller.FullName);
@@ -375,6 +364,8 @@ namespace Doosii.BLL.Services
 
         private static OrderResponse MapToOrderResponse(Order order, string buyerName, string sellerName)
         {
+            var shops = order.Items.Where(i => i.SourceType == "SHOP_PRODUCT" && i.StoreIdSnapshot.HasValue && i.StoreNameSnapshot != null)
+                .Select(i => new { i.StoreIdSnapshot, i.StoreNameSnapshot }).Distinct().ToArray();
             return new OrderResponse
             {
                 Id = order.Id,
@@ -382,6 +373,8 @@ namespace Doosii.BLL.Services
                 BuyerName = buyerName,
                 SellerId = order.SellerId,
                 SellerName = sellerName,
+                StoreId = shops.Length == 1 && order.Items.All(i => i.SourceType == "SHOP_PRODUCT" && i.StoreIdSnapshot == shops[0].StoreIdSnapshot) ? shops[0].StoreIdSnapshot : null,
+                StoreName = shops.Length == 1 && order.Items.All(i => i.SourceType == "SHOP_PRODUCT" && i.StoreIdSnapshot == shops[0].StoreIdSnapshot) ? shops[0].StoreNameSnapshot : null,
                 ProductPrice = order.ProductPrice,
                 ShippingFee = order.ShippingFee,
                 EscrowFee = order.EscrowFee,
@@ -406,6 +399,9 @@ namespace Doosii.BLL.Services
                 {
                     Id = item.Id,
                     ProductId = item.ProductId,
+                    SourceType = item.SourceType, PassPostId = item.PassPostId,
+                    StoreIdSnapshot = item.StoreIdSnapshot, StoreNameSnapshot = item.StoreNameSnapshot,
+                    SellerNameSnapshot = item.SellerNameSnapshot, SnapshotOrigin = item.SnapshotOrigin,
                     ProductNameSnapshot = item.ProductNameSnapshot,
                     PriceSnapshot = item.PriceSnapshot,
                     ThumbnailSnapshot = item.ThumbnailSnapshot

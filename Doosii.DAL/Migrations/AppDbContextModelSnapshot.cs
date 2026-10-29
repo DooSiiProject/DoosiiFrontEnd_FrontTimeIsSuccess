@@ -977,16 +977,48 @@ namespace Doosii.DAL.Migrations
                     b.Property<int>("OrderId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("PassPostId")
+                        .HasColumnType("int");
+
                     b.Property<decimal>("PriceSnapshot")
                         .HasColumnType("decimal(18,2)");
 
-                    b.Property<int>("ProductId")
+                    b.Property<int?>("ProductId")
                         .HasColumnType("int");
 
                     b.Property<string>("ProductNameSnapshot")
                         .IsRequired()
                         .HasMaxLength(300)
                         .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("SellerNameSnapshot")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("SnapshotOrigin")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)")
+                        .HasDefaultValue("AT_ORDER");
+
+                    b.Property<string>("SourceType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("SHOP_PRODUCT");
+
+                    b.Property<byte[]>("SourceVersionSnapshot")
+                        .HasMaxLength(8)
+                        .HasColumnType("varbinary(8)");
+
+                    b.Property<int?>("StoreIdSnapshot")
+                        .HasColumnType("int");
+
+                    b.Property<string>("StoreNameSnapshot")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
 
                     b.Property<string>("ThumbnailSnapshot")
                         .HasMaxLength(1000)
@@ -996,7 +1028,18 @@ namespace Doosii.DAL.Migrations
 
                     b.HasIndex("OrderId");
 
-                    b.ToTable("OrderItems");
+                    b.HasIndex("PassPostId");
+
+                    b.HasIndex("ProductId");
+
+                    b.ToTable("OrderItems", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_OrderItems_ShopSnapshot", "([StoreIdSnapshot] IS NULL AND [StoreNameSnapshot] IS NULL) OR ([SourceType] = 'SHOP_PRODUCT' AND [StoreIdSnapshot] IS NOT NULL AND [StoreIdSnapshot] > 0 AND [StoreNameSnapshot] IS NOT NULL AND LEN(LTRIM(RTRIM([StoreNameSnapshot]))) > 0)");
+
+                            t.HasCheckConstraint("CK_OrderItems_SnapshotOrigin", "[SnapshotOrigin] IN ('AT_ORDER','LEGACY_BACKFILL','LEGACY_UNKNOWN')");
+
+                            t.HasCheckConstraint("CK_OrderItems_Source", "([SourceType] = 'SHOP_PRODUCT' AND [ProductId] IS NOT NULL AND [PassPostId] IS NULL) OR ([SourceType] = 'PASS_POST' AND [ProductId] IS NULL AND [PassPostId] IS NOT NULL)");
+                        });
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Order.PaymentLog", b =>
@@ -2228,6 +2271,16 @@ namespace Doosii.DAL.Migrations
                         .HasForeignKey("OrderId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.HasOne("Doosii.DAL.Models.Forum.PassPostInfo", null)
+                        .WithMany()
+                        .HasForeignKey("PassPostId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Doosii.DAL.Models.Store.Product", null)
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Order");
                 });

@@ -23,7 +23,7 @@ internal static class OrderLifecycle
         order.Status = OrderStatus.Cancelled; order.UpdatedAt = DateTime.UtcNow;
         foreach (var item in order.Items)
         {
-            var product = await db.Products.FromSqlInterpolated($"SELECT * FROM [store].[Products] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {item.ProductId}").SingleOrDefaultAsync();
+            var product = await db.Products.FromSqlInterpolated($"SELECT * FROM [store].[Products] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {item.RequireShopProductId()}").SingleOrDefaultAsync();
             if (product?.Status == "LOCKED" && product.ReservedOrderId == order.Id && product.ReservedPickupReservationId == null)
             {
                 product.Status = "AVAILABLE"; product.ReservedOrderId = null; product.UpdatedAt = DateTime.UtcNow;

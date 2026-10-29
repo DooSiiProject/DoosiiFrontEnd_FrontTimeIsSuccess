@@ -38,7 +38,13 @@ namespace Doosii.BLL.DTOs
     public class OrderItemDto
     {
         public int Id { get; set; }
-        public int ProductId { get; set; }
+        public string SourceType { get; set; } = "SHOP_PRODUCT";
+        public int? ProductId { get; set; }
+        public int? PassPostId { get; set; }
+        public int? StoreIdSnapshot { get; set; }
+        public string? StoreNameSnapshot { get; set; }
+        public string? SellerNameSnapshot { get; set; }
+        public string SnapshotOrigin { get; set; } = "AT_ORDER";
         public string ProductNameSnapshot { get; set; } = string.Empty;
         public decimal PriceSnapshot { get; set; }
         public string? ThumbnailSnapshot { get; set; }

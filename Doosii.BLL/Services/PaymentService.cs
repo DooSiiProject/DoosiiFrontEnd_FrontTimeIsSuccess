@@ -100,7 +100,7 @@ public class PaymentService : IPaymentService
         if (payment == null || payment.IsSandbox || (!string.IsNullOrEmpty(payment.AccountNumber) && payment.AccountNumber != data.AccountNumber)) return false;
         foreach (var item in order.Items)
         {
-            var product = await _context.Products.FromSqlInterpolated($"SELECT * FROM [store].[Products] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {item.ProductId}").SingleOrDefaultAsync();
+            var product = await _context.Products.FromSqlInterpolated($"SELECT * FROM [store].[Products] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {item.RequireShopProductId()}").SingleOrDefaultAsync();
             if (product?.Status != "LOCKED" || product.ReservedOrderId != order.Id || product.ReservedPickupReservationId != null) applied = false;
         }
         if (applied)

@@ -195,7 +195,7 @@ namespace Doosii.BLL.Services
                 dispute.Status = DisputeStatus.RefundedBuyer;
                 order.Status = OrderStatus.Refunded;
                 escrow.Status = EscrowStatus.Refunded;
-                foreach (var item in order.Items) await _productLockService.UnlockProductAsync(item.ProductId, order.Id);
+                foreach (var item in order.Items) await _productLockService.UnlockProductAsync(item.RequireShopProductId(), order.Id);
             }
             else
             {
@@ -203,7 +203,7 @@ namespace Doosii.BLL.Services
                 order.Status = OrderStatus.CompletedReleased;
                 order.CompletedAt ??= now;
                 if (escrow.Status == EscrowStatus.Holding) { escrow.Status = EscrowStatus.Released; escrow.ReleasedAt = now; }
-                foreach (var item in order.Items) await _productLockService.MarkProductAsSoldAsync(item.ProductId, order.Id);
+                foreach (var item in order.Items) await _productLockService.MarkProductAsSoldAsync(item.RequireShopProductId(), order.Id);
             }
             dispute.AdminVerdict = request.AdminVerdict.Trim(); dispute.ResolvedAt = now; order.UpdatedAt = now;
             await _context.SaveChangesAsync(); await transaction.CommitAsync();

@@ -222,6 +222,16 @@ namespace Doosii.DAL.Data
 
             modelBuilder.Entity<OrderItem>(entity =>
             {
+                entity.Property(i => i.SourceType).HasDefaultValue("SHOP_PRODUCT");
+                entity.Property(i => i.SnapshotOrigin).HasDefaultValue("AT_ORDER");
+                entity.ToTable("OrderItems", t =>
+                {
+                    t.HasCheckConstraint("CK_OrderItems_Source", "([SourceType] = 'SHOP_PRODUCT' AND [ProductId] IS NOT NULL AND [PassPostId] IS NULL) OR ([SourceType] = 'PASS_POST' AND [ProductId] IS NULL AND [PassPostId] IS NOT NULL)");
+                    t.HasCheckConstraint("CK_OrderItems_SnapshotOrigin", "[SnapshotOrigin] IN ('AT_ORDER','LEGACY_BACKFILL','LEGACY_UNKNOWN')");
+                    t.HasCheckConstraint("CK_OrderItems_ShopSnapshot", "([StoreIdSnapshot] IS NULL AND [StoreNameSnapshot] IS NULL) OR ([SourceType] = 'SHOP_PRODUCT' AND [StoreIdSnapshot] IS NOT NULL AND [StoreIdSnapshot] > 0 AND [StoreNameSnapshot] IS NOT NULL AND LEN(LTRIM(RTRIM([StoreNameSnapshot]))) > 0)");
+                });
+                entity.HasOne<Product>().WithMany().HasForeignKey(i => i.ProductId).OnDelete(DeleteBehavior.Restrict);
+                entity.HasOne<Doosii.DAL.Models.Forum.PassPostInfo>().WithMany().HasForeignKey(i => i.PassPostId).OnDelete(DeleteBehavior.Restrict);
                 entity.HasOne(oi => oi.Order)
                       .WithMany(o => o.Items)
                       .HasForeignKey(oi => oi.OrderId)
