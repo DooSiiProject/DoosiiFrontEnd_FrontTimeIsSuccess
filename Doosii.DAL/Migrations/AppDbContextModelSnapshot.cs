@@ -257,6 +257,25 @@ namespace Doosii.DAL.Migrations
                     b.ToTable("Conversations", "forum");
                 });
 
+            modelBuilder.Entity("Doosii.DAL.Models.Forum.PassOrderLock", b =>
+                {
+                    b.Property<int>("PostId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("OrderId")
+                        .HasColumnType("int");
+
+                    b.HasKey("PostId");
+
+                    b.HasIndex("OrderId")
+                        .IsUnique();
+
+                    b.ToTable("PassOrderLocks", "forum");
+                });
+
             modelBuilder.Entity("Doosii.DAL.Models.Forum.PassPostInfo", b =>
                 {
                     b.Property<int>("PostId")
@@ -2089,6 +2108,21 @@ namespace Doosii.DAL.Migrations
                     b.Navigation("Product");
 
                     b.Navigation("Seller");
+                });
+
+            modelBuilder.Entity("Doosii.DAL.Models.Forum.PassOrderLock", b =>
+                {
+                    b.HasOne("Doosii.DAL.Models.Order.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Doosii.DAL.Models.Forum.PassPostInfo", null)
+                        .WithOne()
+                        .HasForeignKey("Doosii.DAL.Models.Forum.PassOrderLock", "PostId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Forum.PassPostInfo", b =>

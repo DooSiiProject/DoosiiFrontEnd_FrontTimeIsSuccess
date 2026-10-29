@@ -61,6 +61,14 @@ try
     var passItem = new OrderItem { OrderId = order.Id, SourceType = "PASS_POST", PassPostId = post.Id, ProductNameSnapshot = "Pass snapshot", PriceSnapshot = 100000, SellerNameSnapshot = "Pass seller" };
     db.OrderItems.Add(passItem); await db.SaveChangesAsync();
     Check(passItem.Id > 0 && passItem.ProductId == null, "valid PASS source persisted");
+    var passLock = new PassOrderLock { PostId = post.Id, OrderId = order.Id };
+    db.Set<PassOrderLock>().Add(passLock); await db.SaveChangesAsync();
+    try { await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO forum.PassOrderLocks(PostId,OrderId,CreatedAt) VALUES ({post.Id},{order.Id},{DateTime.UtcNow})"); throw new Exception("duplicate PASS lock accepted"); }
+    catch (SqlException error) when (error.Number is 2601 or 2627) { checks++; }
+    try { await migration.MigrateAsync("20261029162005_AddOrderItemSources"); throw new Exception("active locks discarded on rollback"); }
+    catch (SqlException error) when (error.Number == 51022) { checks++; }
+    Check(await db.Set<PassOrderLock>().AnyAsync(x => x.PostId == post.Id), "rollback preserves active lock");
+    db.Set<PassOrderLock>().Remove(passLock); await db.SaveChangesAsync();
     await Reject($"UPDATE dbo.OrderItems SET PassPostId=2147483647 WHERE Id={passItem.Id}", "missing PASS FK");
     await Reject($"UPDATE dbo.OrderItems SET PassPostId={product.Id + 10000} WHERE Id={passItem.Id}", "non-PASS reference");
     try { passItem.RequireShopProductId(); throw new Exception("PASS passed as shop product"); } catch (InvalidOperationException) { checks++; }

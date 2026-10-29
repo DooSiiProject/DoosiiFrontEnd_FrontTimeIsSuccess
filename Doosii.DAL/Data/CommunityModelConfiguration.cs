@@ -55,6 +55,13 @@ internal static class CommunityModelConfiguration
                 t.HasCheckConstraint("CK_PassPostInfos_Measurements", "[MeasurementsJson] IS NULL OR (ISJSON([MeasurementsJson]) = 1 AND LEFT(LTRIM([MeasurementsJson]), 1) = '[')");
             });
         });
+        modelBuilder.Entity<PassOrderLock>(e =>
+        {
+            e.Property(l => l.PostId).ValueGeneratedNever();
+            e.HasOne<PassPostInfo>().WithOne().HasForeignKey<PassOrderLock>(l => l.PostId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<Doosii.DAL.Models.Order.Order>().WithMany().HasForeignKey(l => l.OrderId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(l => l.OrderId).IsUnique();
+        });
         // Composite FK prevents tagging a product with a different store.
         modelBuilder.Entity<Product>().HasAlternateKey(p => new { p.Id, p.StoreId });
         modelBuilder.Entity<PostMedia>(e =>
