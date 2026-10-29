@@ -115,7 +115,20 @@ namespace Doosii.BLL.Services
                 throw new UnauthorizedAccessException("Bạn không có quyền truy cập thông tin đơn hàng này.");
             }
 
-            return MapToOrderResponse(order, order.Buyer.FullName, order.Seller.FullName);
+            var response = MapToOrderResponse(order, order.Buyer.FullName, order.Seller.FullName);
+            // Resolve from ordered products, never infer a shop from the seller alone.
+            var productIds = order.Items.Select(i => i.ProductId).Distinct().ToArray();
+            var products = await _context.Products.AsNoTracking()
+                .Where(p => productIds.Contains(p.Id))
+                .Select(p => new { p.Id, p.StoreId, StoreName = p.Store.Name, StoreOwnerId = p.Store.OwnerId })
+                .ToListAsync();
+            if (productIds.Length > 0 && products.Count == productIds.Length &&
+                products.All(p => p.StoreOwnerId == order.SellerId) && products.Select(p => p.StoreId).Distinct().Count() == 1)
+            {
+                response.StoreId = products[0].StoreId;
+                response.StoreName = products[0].StoreName;
+            }
+            return response;
         }
 
         public async Task<List<OrderResponse>> GetMyPurchasesAsync(int buyerId)

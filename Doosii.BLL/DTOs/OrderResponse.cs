@@ -7,6 +7,8 @@ namespace Doosii.BLL.DTOs
         public string BuyerName { get; set; } = string.Empty;
         public int SellerId { get; set; }
         public string SellerName { get; set; } = string.Empty;
+        public int? StoreId { get; set; }
+        public string? StoreName { get; set; }
         public decimal ProductPrice { get; set; }
         public decimal ShippingFee { get; set; }
         public decimal EscrowFee { get; set; }
