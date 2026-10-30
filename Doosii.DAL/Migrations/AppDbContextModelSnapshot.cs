@@ -1281,6 +1281,130 @@ namespace Doosii.DAL.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Doosii.DAL.Models.Order.ReturnRequest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AdminNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("BuyerId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("DeadlineAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EvidenceJson")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<int>("OrderId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<decimal?>("RefundAmount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("RefundConfirmedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RefundEvidenceUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ReturnCarrier")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("ReturnTrackingCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime?>("ReturnedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SellerNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("ShippingFeePayer")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId")
+                        .IsUnique();
+
+                    b.ToTable("ReturnRequests", "dbo", t =>
+                        {
+                            t.HasCheckConstraint("CK_ReturnRequests_FeePayer", "[ShippingFeePayer] IS NULL OR [ShippingFeePayer] IN ('BUYER','SELLER')");
+
+                            t.HasCheckConstraint("CK_ReturnRequests_RefundAmount", "[RefundAmount] IS NULL OR [RefundAmount] >= 0");
+
+                            t.HasCheckConstraint("CK_ReturnRequests_Status", "[Status] IN ('REQUESTED','APPROVED','REJECTED','RETURN_SHIPPED','RETURN_RECEIVED','REFUND_PENDING','REFUND_COMPLETED','ADMIN_REVIEW')");
+                        });
+                });
+
+            modelBuilder.Entity("Doosii.DAL.Models.Order.ReturnRequestEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<int>("ActorId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("ReturnRequestId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReturnRequestId", "Id");
+
+                    b.ToTable("ReturnRequestEvents");
+                });
+
             modelBuilder.Entity("Doosii.DAL.Models.Order.WithdrawalRequest", b =>
                 {
                     b.Property<int>("Id")
@@ -2363,6 +2487,28 @@ namespace Doosii.DAL.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Doosii.DAL.Models.Order.ReturnRequest", b =>
+                {
+                    b.HasOne("Doosii.DAL.Models.Order.Order", "Order")
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Order");
+                });
+
+            modelBuilder.Entity("Doosii.DAL.Models.Order.ReturnRequestEvent", b =>
+                {
+                    b.HasOne("Doosii.DAL.Models.Order.ReturnRequest", "ReturnRequest")
+                        .WithMany("Events")
+                        .HasForeignKey("ReturnRequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ReturnRequest");
+                });
+
             modelBuilder.Entity("Doosii.DAL.Models.Order.WithdrawalRequest", b =>
                 {
                     b.HasOne("Doosii.DAL.Models.User", "User")
@@ -2576,6 +2722,11 @@ namespace Doosii.DAL.Migrations
                     b.Navigation("Items");
 
                     b.Navigation("PaymentLogs");
+                });
+
+            modelBuilder.Entity("Doosii.DAL.Models.Order.ReturnRequest", b =>
+                {
+                    b.Navigation("Events");
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Store.Category", b =>

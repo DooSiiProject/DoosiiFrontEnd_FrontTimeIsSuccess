@@ -58,6 +58,8 @@ namespace Doosii.DAL.Data
         public DbSet<EscrowTransaction> EscrowTransactions { get; set; }
         public DbSet<PaymentLog> PaymentLogs { get; set; }
         public DbSet<Dispute> Disputes { get; set; }
+        public DbSet<ReturnRequest> ReturnRequests { get; set; }
+        public DbSet<ReturnRequestEvent> ReturnRequestEvents { get; set; }
         public DbSet<WithdrawalRequest> WithdrawalRequests { get; set; }
 
         // Notification Module (Track 2 - Wee)
@@ -67,6 +69,21 @@ namespace Doosii.DAL.Data
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+            modelBuilder.Entity<ReturnRequest>(e =>
+            {
+                e.HasOne(r => r.Order).WithMany().HasForeignKey(r => r.OrderId).OnDelete(DeleteBehavior.Restrict);
+                e.HasIndex(r => r.OrderId).IsUnique();
+                e.Property(r => r.RefundAmount).HasColumnType("decimal(18,2)");
+                e.ToTable("ReturnRequests", "dbo", t => {
+                    t.HasCheckConstraint("CK_ReturnRequests_Status", "[Status] IN ('REQUESTED','APPROVED','REJECTED','RETURN_SHIPPED','RETURN_RECEIVED','REFUND_PENDING','REFUND_COMPLETED','ADMIN_REVIEW')");
+                    t.HasCheckConstraint("CK_ReturnRequests_RefundAmount", "[RefundAmount] IS NULL OR [RefundAmount] >= 0");
+                    t.HasCheckConstraint("CK_ReturnRequests_FeePayer", "[ShippingFeePayer] IS NULL OR [ShippingFeePayer] IN ('BUYER','SELLER')");
+                });
+            });
+            modelBuilder.Entity<ReturnRequestEvent>(e => {
+                e.HasOne(x => x.ReturnRequest).WithMany(r => r.Events).HasForeignKey(x => x.ReturnRequestId).OnDelete(DeleteBehavior.Restrict);
+                e.HasIndex(x => new { x.ReturnRequestId, x.Id });
+            });
             PickupModelConfiguration.Configure(modelBuilder);
             modelBuilder.Entity<UploadedImage>(e => {
                 e.HasIndex(i => i.PublicId).IsUnique();
