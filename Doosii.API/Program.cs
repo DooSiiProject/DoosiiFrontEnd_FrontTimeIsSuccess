@@ -56,6 +56,7 @@ builder.Services.AddScoped<IChatService, ChatService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IProductLockService, MockProductLockService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
+builder.Services.AddScoped<ReturnService>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddPickupDataProtection(builder.Configuration, builder.Environment);
 builder.Services.AddSingleton<PickupCodeProtection>();
