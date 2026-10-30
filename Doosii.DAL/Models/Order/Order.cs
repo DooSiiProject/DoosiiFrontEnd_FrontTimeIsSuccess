@@ -15,6 +15,7 @@ namespace Doosii.DAL.Models.Order
         public const string CodPending = "COD_PENDING";
         public const string CodInTransit = "COD_IN_TRANSIT";
         public const string CodCompleted = "COD_COMPLETED";
+        public const string CodReturned = "COD_RETURNED";
     }
 
     [Table("Orders")]

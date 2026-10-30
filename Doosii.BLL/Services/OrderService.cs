@@ -207,6 +207,9 @@ namespace Doosii.BLL.Services
             if (order.Status == OrderStatus.CodCompleted) return MapToOrderResponse(order, order.Buyer.FullName, order.Seller.FullName);
             OrderLifecycle.EnsureVersion(order, request.Version);
             if (order.PaymentMethod != "COD" || order.Status != OrderStatus.CodInTransit) throw new InvalidOperationException("Đơn không phải COD đang giao.");
+            if (await _context.DeliveryIssues.AnyAsync(i => i.OrderId == orderId && (i.Status == "FAILED" || i.Status == "RETURNING"))) throw new InvalidOperationException("Đơn đang giao thất bại hoặc hoàn về; chưa thể xác nhận thu tiền.");
+            var deliveryIssue = await _context.DeliveryIssues.Include(i => i.Events).SingleOrDefaultAsync(i => i.OrderId == orderId && i.Status == "RETRYING");
+            if (deliveryIssue != null) { deliveryIssue.Status = "DELIVERED"; deliveryIssue.UpdatedAt = DateTime.UtcNow; deliveryIssue.Events.Add(new DeliveryIssueEvent { ActorId = sellerId, Action = "delivered", CreatedAt = deliveryIssue.UpdatedAt }); }
             order.Status = OrderStatus.CodCompleted; order.PaidAt = order.DeliveredAt = order.CompletedAt = order.UpdatedAt = DateTime.UtcNow;
             foreach (var item in order.Items) {
                 if (item.SourceType == "PASS_POST") { await ClosePassLockAsync(item, order.Id, true); continue; }

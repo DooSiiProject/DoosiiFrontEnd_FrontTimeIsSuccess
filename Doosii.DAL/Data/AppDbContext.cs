@@ -60,6 +60,8 @@ namespace Doosii.DAL.Data
         public DbSet<Dispute> Disputes { get; set; }
         public DbSet<ReturnRequest> ReturnRequests { get; set; }
         public DbSet<ReturnRequestEvent> ReturnRequestEvents { get; set; }
+        public DbSet<DeliveryIssue> DeliveryIssues { get; set; }
+        public DbSet<DeliveryIssueEvent> DeliveryIssueEvents { get; set; }
         public DbSet<WithdrawalRequest> WithdrawalRequests { get; set; }
 
         // Notification Module (Track 2 - Wee)
@@ -69,6 +71,15 @@ namespace Doosii.DAL.Data
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+            modelBuilder.Entity<DeliveryIssue>(e => {
+                e.HasOne(i => i.Order).WithMany().HasForeignKey(i => i.OrderId).OnDelete(DeleteBehavior.Restrict);
+                e.HasIndex(i => i.OrderId).IsUnique();
+                e.ToTable("DeliveryIssues", "dbo", t => t.HasCheckConstraint("CK_DeliveryIssues_Status", "[Status] IN ('FAILED','RETRYING','RETURNING','RETURNED','DELIVERED')"));
+            });
+            modelBuilder.Entity<DeliveryIssueEvent>(e => {
+                e.HasOne(i => i.DeliveryIssue).WithMany(i => i.Events).HasForeignKey(i => i.DeliveryIssueId).OnDelete(DeleteBehavior.Restrict);
+                e.HasIndex(i => new { i.DeliveryIssueId, i.Id });
+            });
             modelBuilder.Entity<ReturnRequest>(e =>
             {
                 e.HasOne(r => r.Order).WithMany().HasForeignKey(r => r.OrderId).OnDelete(DeleteBehavior.Restrict);

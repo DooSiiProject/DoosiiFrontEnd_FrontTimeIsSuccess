@@ -788,6 +788,91 @@ namespace Doosii.DAL.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Doosii.DAL.Models.Order.DeliveryIssue", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EvidenceUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("OrderId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderId")
+                        .IsUnique();
+
+                    b.ToTable("DeliveryIssues", "dbo", t =>
+                        {
+                            t.HasCheckConstraint("CK_DeliveryIssues_Status", "[Status] IN ('FAILED','RETRYING','RETURNING','RETURNED','DELIVERED')");
+                        });
+                });
+
+            modelBuilder.Entity("Doosii.DAL.Models.Order.DeliveryIssueEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<int>("ActorId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("DeliveryIssueId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EvidenceUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeliveryIssueId", "Id");
+
+                    b.ToTable("DeliveryIssueEvents");
+                });
+
             modelBuilder.Entity("Doosii.DAL.Models.Order.Dispute", b =>
                 {
                     b.Property<int>("Id")
@@ -2373,6 +2458,28 @@ namespace Doosii.DAL.Migrations
                     b.Navigation("Notification");
                 });
 
+            modelBuilder.Entity("Doosii.DAL.Models.Order.DeliveryIssue", b =>
+                {
+                    b.HasOne("Doosii.DAL.Models.Order.Order", "Order")
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Order");
+                });
+
+            modelBuilder.Entity("Doosii.DAL.Models.Order.DeliveryIssueEvent", b =>
+                {
+                    b.HasOne("Doosii.DAL.Models.Order.DeliveryIssue", "DeliveryIssue")
+                        .WithMany("Events")
+                        .HasForeignKey("DeliveryIssueId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("DeliveryIssue");
+                });
+
             modelBuilder.Entity("Doosii.DAL.Models.Order.Dispute", b =>
                 {
                     b.HasOne("Doosii.DAL.Models.Order.Order", "Order")
@@ -2711,6 +2818,11 @@ namespace Doosii.DAL.Migrations
                     b.Navigation("Media");
 
                     b.Navigation("PassInfo");
+                });
+
+            modelBuilder.Entity("Doosii.DAL.Models.Order.DeliveryIssue", b =>
+                {
+                    b.Navigation("Events");
                 });
 
             modelBuilder.Entity("Doosii.DAL.Models.Order.Order", b =>
