@@ -139,6 +139,14 @@ public partial class CommunityPostService
             await CommunityAccess.LockAsync(db, $"community:post:{postId}");
             var post = await db.Posts.Include(p => p.PassInfo).SingleOrDefaultAsync(p => p.Id == postId) ?? throw new ServiceException(404, "Không tìm thấy bài viết.", "POST_NOT_FOUND");
             if (await db.Set<PassOrderLock>().AnyAsync(l => l.PostId == postId)) throw new ServiceException(409, "Món PASS đang thuộc một đơn hàng.", "PASS_ORDER_LOCKED");
+            if (request.SaleStatus == "AVAILABLE")
+            {
+                var latestOrderId = await db.OrderItems.AsNoTracking().Where(i => i.PassPostId == postId)
+                    .Join(db.Orders.AsNoTracking().Where(o => o.Status != "CANCELLED"), i => i.OrderId, o => o.Id, (i, o) => o)
+                    .OrderByDescending(o => o.CreatedAt).ThenByDescending(o => o.Id).Select(o => (int?)o.Id).FirstOrDefaultAsync();
+                if (latestOrderId.HasValue && await db.ReturnRequests.AsNoTracking().AnyAsync(r => r.OrderId == latestOrderId && r.Status != "REJECTED" && !r.Events.Any(e => e.Action == "relist")))
+                    throw new ServiceException(409, "Món đang xử lý trả hàng. Hãy kiểm tra và mở bán lại từ chi tiết đơn sau khi hoàn tiền.", "PASS_RETURN_PENDING");
+            }
             await EditableAsync(post, actorId, "PASS"); CommunityAccess.Version(post, request.Version);
             post.PassInfo!.SaleStatus = request.SaleStatus; post.UpdatedAt = DateTime.UtcNow;
             await db.SaveChangesAsync(); await tx.CommitAsync();

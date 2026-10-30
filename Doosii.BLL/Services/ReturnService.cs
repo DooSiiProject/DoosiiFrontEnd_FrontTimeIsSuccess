@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.SignalR;
 using Doosii.BLL.Hubs;
 using Doosii.DAL.Models.Notification;
+using Doosii.DAL.Models.Forum;
 
 namespace Doosii.BLL.Services;
 
@@ -29,7 +30,10 @@ public sealed class ReturnService(AppDbContext db, IHubContext<NotificationHub>?
             "approve" or "admin-approve" => "Yêu cầu trả hàng đã được duyệt. Người mua hãy kiểm tra phương án hoàn tiền và gửi hàng trả.",
             "reject" or "admin-reject" => "Yêu cầu trả hàng đã bị từ chối. Hãy xem lý do trong chi tiết đơn.",
             "ship" => "Người mua đã ghi nhận gửi hàng trả. Người bán hãy theo dõi vận đơn.",
-            "receive" => "Người bán đã xác nhận nhận hàng trả và cần cung cấp bằng chứng hoàn tiền.",
+            "receive" => "Người bán đã nhận hàng trả và cần kiểm tra tình trạng món hàng.",
+            "inspect" => "Người bán đã ghi nhận tình trạng hàng trả. Hãy xem chi tiết đơn.",
+            "keep" => "Người bán đã chọn chưa mở bán lại món hàng.",
+            "relist" => "Người bán đã mở lại trạng thái bán; trạng thái hiển thị của món không thay đổi.",
             "refund-proof" => "Người bán đã gửi bằng chứng hoàn tiền. Người mua hãy kiểm tra tiền thực nhận.",
             "confirm-refund" => "Người mua đã xác nhận nhận tiền hoàn.",
             "escalate" => "Yêu cầu trả hàng đã được chuyển đến Admin xem xét.",
@@ -70,7 +74,36 @@ public sealed class ReturnService(AppDbContext db, IHubContext<NotificationHub>?
         return url;
     }
     private async Task<bool> IsAdmin(int id) => await db.Users.AsNoTracking().AnyAsync(u => u.Id == id && u.Role == "Admin");
-    private static object View(ReturnRequest r) => new { r.Id, r.OrderId, r.BuyerId, r.Reason, r.EvidenceJson, r.Status, r.SellerNote, r.ReturnCarrier, r.ReturnTrackingCode, r.RefundEvidenceUrl, r.AdminNote, r.ShippingFeePayer, r.RefundAmount, r.CreatedAt, r.DeadlineAt, r.UpdatedAt, r.ReturnedAt, r.RefundConfirmedAt, Version = Convert.ToBase64String(r.RowVersion), Events = r.Events.OrderBy(e => e.Id).Select(e => new { e.ActorId, e.Action, e.Note, e.CreatedAt }).ToList() };
+    private static object View(ReturnRequest r) => new { r.Id, r.OrderId, r.BuyerId, r.Reason, r.EvidenceJson, r.Status, r.SellerNote, r.ReturnCarrier, r.ReturnTrackingCode, r.RefundEvidenceUrl, r.AdminNote, r.ShippingFeePayer, r.RefundAmount, r.CreatedAt, r.DeadlineAt, r.UpdatedAt, r.ReturnedAt, r.RefundConfirmedAt, InspectionNote = r.Events.Where(e => e.Action == "inspect").OrderByDescending(e => e.Id).Select(e => e.Note).FirstOrDefault(), RestockDecision = r.Events.Any(e => e.Action == "relist") ? "RELISTED" : r.Events.Any(e => e.Action == "keep") ? "KEPT" : null, Version = Convert.ToBase64String(r.RowVersion), Events = r.Events.OrderBy(e => e.Id).Select(e => new { e.ActorId, e.Action, e.Note, e.CreatedAt }).ToList() };
+
+    private async Task Relist(Order order)
+    {
+        if (order.Items.Count != 1) throw new InvalidOperationException("Chỉ hỗ trợ mở bán lại đơn có một món.");
+        var item = order.Items.Single();
+        if (item.SourceType == "SHOP_PRODUCT" && item.ProductId is int productId)
+        {
+            var product = await db.Products.FromSqlInterpolated($"SELECT * FROM [store].[Products] WITH (UPDLOCK,HOLDLOCK) WHERE [Id] = {productId}").SingleOrDefaultAsync()
+                ?? throw new InvalidOperationException("Không tìm thấy sản phẩm shop.");
+            var owner = await db.Stores.AsNoTracking().Where(s => s.Id == product.StoreId).Select(s => s.OwnerId).SingleAsync();
+            if (owner != order.SellerId || product.Status != "SOLD" || product.ReservedOrderId != order.Id || product.ReservedPickupReservationId != null)
+                throw new InvalidOperationException("Sản phẩm đã thay đổi hoặc thuộc đơn/lượt giữ khác; không thể mở bán lại.");
+            product.Status = "AVAILABLE"; product.ReservedOrderId = null; product.UpdatedAt = DateTime.UtcNow;
+        }
+        else if (item.SourceType == "PASS_POST" && item.PassPostId is int postId)
+        {
+            await CommunityAccess.LockAsync(db, $"community:post:{postId}");
+            var post = await db.Posts.Include(p => p.PassInfo).SingleOrDefaultAsync(p => p.Id == postId && p.Type == "PASS")
+                ?? throw new InvalidOperationException("Không tìm thấy món PASS.");
+            if (post.AuthorId != order.SellerId || post.PassInfo?.SaleStatus != "SOLD" || await db.Set<PassOrderLock>().AnyAsync(l => l.PostId == postId))
+                throw new InvalidOperationException("Món PASS đã thay đổi hoặc đang thuộc đơn khác; không thể mở bán lại.");
+            var newer = await db.OrderItems.AsNoTracking().Where(i => i.PassPostId == postId && i.OrderId != order.Id)
+                .Join(db.Orders.AsNoTracking(), i => i.OrderId, o => o.Id, (i, o) => o)
+                .AnyAsync(o => (o.CreatedAt > order.CreatedAt || (o.CreatedAt == order.CreatedAt && o.Id > order.Id)) && o.Status != OrderStatus.Cancelled);
+            if (newer) throw new InvalidOperationException("Món PASS đã có đơn mới hơn; không thể mở bán từ đơn cũ.");
+            post.PassInfo.SaleStatus = "AVAILABLE"; post.UpdatedAt = DateTime.UtcNow;
+        }
+        else throw new InvalidOperationException("Nguồn sản phẩm của đơn không hợp lệ.");
+    }
     public async Task<object?> Get(int orderId, int actor)
     {
         var order = await db.Orders.AsNoTracking().SingleOrDefaultAsync(o => o.Id == orderId) ?? throw new KeyNotFoundException("Không tìm thấy đơn hàng.");
@@ -125,7 +158,18 @@ public sealed class ReturnService(AppDbContext db, IHubContext<NotificationHub>?
             case "reject" when seller && r.Status == "REQUESTED": r.SellerNote = note = Required(input.Note, 1000, "Lý do từ chối"); r.Status = "REJECTED"; break;
             case "ship" when buyer && r.Status == "APPROVED": r.ReturnCarrier = Required(input.Carrier, 100, "Đơn vị vận chuyển"); r.ReturnTrackingCode = Required(input.TrackingCode, 100, "Mã vận đơn"); r.Status = "RETURN_SHIPPED"; break;
             case "receive" when seller && r.Status == "RETURN_SHIPPED": r.ReturnedAt = now; r.Status = "RETURN_RECEIVED"; break;
-            case "refund-proof" when seller && r.Status == "RETURN_RECEIVED": r.RefundEvidenceUrl = Evidence(input.EvidenceUrl); r.Status = "REFUND_PENDING"; break;
+            case "inspect" when seller && r.ReturnedAt.HasValue && r.Status is "RETURN_RECEIVED" or "REFUND_PENDING" or "REFUND_COMPLETED":
+                if (r.Events.Any(e => e.Action == "inspect")) throw new InvalidOperationException("Tình trạng hàng trả đã được ghi nhận.");
+                note = Required(input.Note, 1000, "Tình trạng hàng trả"); break;
+            case "refund-proof" when seller && r.Status == "RETURN_RECEIVED":
+                if (!r.Events.Any(e => e.Action == "inspect")) throw new InvalidOperationException("Hãy kiểm tra và ghi nhận tình trạng hàng trả trước.");
+                r.RefundEvidenceUrl = Evidence(input.EvidenceUrl); r.Status = "REFUND_PENDING"; break;
+            case "keep" when seller && r.Status == "REFUND_COMPLETED":
+                if (!r.Events.Any(e => e.Action == "inspect") || r.Events.Any(e => e.Action is "keep" or "relist")) throw new InvalidOperationException("Cần kiểm tra hàng và chưa có quyết định mở bán.");
+                note = "Chưa mở bán lại"; break;
+            case "relist" when seller && r.Status == "REFUND_COMPLETED":
+                if (!r.Events.Any(e => e.Action == "inspect") || r.Events.Any(e => e.Action == "relist")) throw new InvalidOperationException("Cần kiểm tra hàng và món chưa được mở bán lại từ yêu cầu này.");
+                await Relist(order); note = "Đã mở lại trạng thái bán; trạng thái hiển thị không thay đổi."; break;
             case "confirm-refund" when buyer && r.Status == "REFUND_PENDING": r.RefundConfirmedAt = now; r.Status = "REFUND_COMPLETED"; break;
             case "escalate" when (buyer || seller) && r.Status is "REQUESTED" or "REJECTED" or "APPROVED" or "RETURN_SHIPPED" or "RETURN_RECEIVED" or "REFUND_PENDING":
                 note = Required(input.Note, 1000, "Nội dung bất đồng"); r.Status = "ADMIN_REVIEW"; break;
